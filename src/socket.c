@@ -10,36 +10,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#define BASE_TEN 10
-
-in_port_t parse_in_port_t(const char *prog_name, const char *port_str, usage_func usage)
-{
-    char     *endptr;
-    uintmax_t parsed_val;
-
-    errno      = 0;
-    parsed_val = strtoumax(port_str, &endptr, BASE_TEN);
-
-    if(errno != 0)
-    {
-        perror("Error parsing in_port_t");
-        exit(EXIT_FAILURE);
-    }
-
-    // Check if there are any non-numeric characters in the input string
-    if(*endptr != '\0')
-    {
-        usage(prog_name, EXIT_FAILURE, "Invalid characters in input.");
-    }
-
-    // Check if the parsed value is within the valid range for in_port_t
-    if(parsed_val > UINT16_MAX)
-    {
-        usage(prog_name, EXIT_FAILURE, "in_port_t value out of range.");
-    }
-    return (in_port_t)parsed_val;
-}
-
 void convert_address(const char *address, struct sockaddr_storage *addr)
 {
     memset(addr, 0, sizeof(*addr));
