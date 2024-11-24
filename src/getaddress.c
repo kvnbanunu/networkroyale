@@ -1,3 +1,4 @@
+#include "../include/getaddress.h"
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <limits.h>
@@ -41,12 +42,12 @@ void getaddress(char **address)
             }
             if(strncmp(host, PREFIX, strlen(PREFIX)) == 0)
             {
-                printf("IP: %s\n", host);
+                // printf("IP: %s\n", host);
                 break;
             }
         }
     }
     freeifaddrs(ifaddr);
 
-    *address = host;
+    strncpy(*address, host, INET_ADDRSTRLEN);
 }

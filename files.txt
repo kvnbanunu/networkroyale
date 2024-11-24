@@ -1,1 +1,1 @@
-getip wip/main.c
+server src/server.c src/getaddress.c include/getaddress.h src/socket.c include/socket.h

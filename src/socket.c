@@ -51,7 +51,8 @@ void socket_bind(int sockfd, struct sockaddr_storage *addr, in_port_t port)
     void     *vaddr;
     in_port_t net_port;
 
-    net_port = htons(port);
+    // If the passed in port is 0 the system will choose an available port
+    net_port = (port != 0) ? htons(port) : 0;
 
     if(addr->ss_family == AF_INET)
     {
