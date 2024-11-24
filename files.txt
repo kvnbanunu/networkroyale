@@ -1,1 +1,1 @@
-server src/server.c src/getaddress.c include/getaddress.h src/socket.c include/socket.h
+server src/server.c src/socket.c include/socket.h src/setup.c include/setup.h
