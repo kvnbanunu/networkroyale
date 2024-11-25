@@ -9,7 +9,21 @@
 #define UNKOWN_OPT_MESSAGE_LEN 48
 #define BASE_TEN 10
 
-static in_port_t parse_in_port_t(const char *prog_name, const char *port_str, usage_func usage)
+
+_Noreturn void usage(const char *prog_name, int exit_code, const char *message)
+{
+    if(message)
+    {
+        fprintf(stderr, "%s\n", message);
+    }
+
+    // edit this later once the usage is defined
+    fprintf(stderr, "usage: %s [-h] <address> <port>\n", prog_name);
+    fputs("	-h  display this help message\n", stderr);
+    exit(exit_code);
+}
+
+static in_port_t parse_in_port_t(const char *prog_name, const char *port_str)
 {
     char     *endptr;
     uintmax_t parsed_val;
@@ -37,7 +51,7 @@ static in_port_t parse_in_port_t(const char *prog_name, const char *port_str, us
     return (in_port_t)parsed_val;
 }
 
-void parse_args_s(int argc, char *argv[], char **addr, char **port, usage_func usage)
+void parse_args(int argc, char *argv[], char **addr, char **port)
 {
     int opt;
 
@@ -85,7 +99,7 @@ void parse_args_s(int argc, char *argv[], char **addr, char **port, usage_func u
     *port = argv[optind + 1];
 }
 
-void handle_args_s(const char *prog_name, const char *addr, const char *port_str, in_port_t *port, usage_func usage)
+void handle_args(const char *prog_name, const char *addr, const char *port_str, in_port_t *port)
 {
     if(addr == NULL)
     {
@@ -97,15 +111,5 @@ void handle_args_s(const char *prog_name, const char *addr, const char *port_str
         usage(prog_name, EXIT_FAILURE, "Error: The port is required");
     }
 
-    *port = parse_in_port_t(prog_name, port_str, usage);
+    *port = parse_in_port_t(prog_name, port_str);
 }
-
-
-
-// void parse_args_c(int argc, char *argv[])
-//{
-// }
-//
-// void handle_args_c(const char *prog_name)
-//{
-// }
