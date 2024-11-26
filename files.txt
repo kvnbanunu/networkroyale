@@ -1,1 +1,2 @@
 server src/server.c src/setup.c include/setup.h
+client src/client.c src/setup.c include/setup.h src/args.c include/args.h

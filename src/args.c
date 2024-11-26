@@ -1,14 +1,13 @@
 #include "../include/args.h"
+#include <errno.h>
 #include <getopt.h>
+#include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <errno.h>
-#include <inttypes.h>
 
 #define UNKOWN_OPT_MESSAGE_LEN 48
 #define BASE_TEN 10
-
 
 _Noreturn void usage(const char *prog_name, int exit_code, const char *message)
 {
@@ -64,14 +63,12 @@ void parse_args(int argc, char *argv[], char **addr, char **port)
             case 'h':
             {
                 usage(argv[0], EXIT_SUCCESS, NULL);
-                break;
             }
             case '?':
             {
                 char message[UNKOWN_OPT_MESSAGE_LEN];
                 snprintf(message, sizeof(message), "Error: Unknown option '-%c'.", optopt);
                 usage(argv[0], EXIT_FAILURE, message);
-                break;
             }
             default:
             {

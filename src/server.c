@@ -1,6 +1,8 @@
 #include "../include/setup.h"
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,9 +12,21 @@
 #include <unistd.h>
 
 #define MAX_PLAYERS 25
+#define NAME_LEN 5
+#define INFO_LEN 7
+#define GAME_START_LEN 17
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
+typedef struct Player
+{
+    int                id;
+    int                socket;
+    struct sockaddr_in addr;
+    char               username[NAME_LEN];
+} player_t;
+
+void        handle_new_player(int serverfd, struct pollfd *fds, nfds_t *nfds, player_t *player, int *player_count, in_port_t udp_port);
 static void setup_signal_handler(void);
 static void sig_handler(int sig);
 
@@ -20,13 +34,15 @@ int main(void)
 {
     int                tcpfd;
     int                udpfd;
-    int                retval      = EXIT_FAILURE;
-    int                num_players = 0;
-    int                count       = 0;
-    int                players[MAX_PLAYERS];
+    int                retval       = EXIT_FAILURE;
+    int                player_count = 0;
     char               address_str[INET_ADDRSTRLEN];
+    const char        *game_start_message = "Game starting...\n";
     struct sockaddr_in tcp_addr;
     struct sockaddr_in udp_addr;
+    struct pollfd      fds[MAX_PLAYERS + 2];    // Max players + server + keyboard
+    nfds_t             nfds;
+    player_t           players[MAX_PLAYERS];
     in_addr_t          address;
     in_port_t          tcp_port;
     in_port_t          udp_port;
@@ -46,24 +62,115 @@ int main(void)
         goto done;
     }
 
-    printf("Server waiting for players on %s : %d\n", address_str, ntohs(tcp_port));
-    printf("TCP : %s:%d\n", address_str, ntohs(tcp_port));
-    printf("UDP : %s:%d\n", address_str, ntohs(udp_port));
+    printf("Server waiting for players on %s : %d\nPress Enter to start game...\n", address_str, ntohs(tcp_port));
 
-    while(!exit_flag && num_players != MAX_PLAYERS)
+    // Setup to poll the server fd and keyboard input
+    memset(fds, 0, sizeof(fds));
+    fds[0].fd     = tcpfd;
+    fds[0].events = POLLIN;
+    fds[1].fd     = STDIN_FILENO;
+    fds[1].events = POLLIN;
+    nfds          = 2;
+    memset(players, 0, sizeof(players));
+    while(!exit_flag)
     {
-        count++;
-        players[num_players] = count;
-        printf("Player %d has joined the lobby\n", players[num_players++]);
-        sleep(1);
-    }
+        // poll because we want to check for non-blocking keyboard input
+        if(poll(fds, nfds, -1) < 0)
+        {
+            perror("poll");
+            goto done;
+        }
 
+        for(nfds_t i = 0; i < nfds; i++)
+        {
+            if(fds[i].revents & POLLIN)    // funky way to check
+            {
+                if(fds[i].fd == tcpfd)
+                {
+                    handle_new_player(tcpfd, fds, &nfds, &players[player_count], &player_count, udp_port);
+                    if(player_count >= MAX_PLAYERS)
+                    {
+                        goto game_start;
+                    }
+                }
+                else if(fds[i].fd == STDIN_FILENO)
+                {
+                    char input;
+                    if(read(STDIN_FILENO, &input, 1) < 1)
+                    {
+                        perror("read");
+                        goto done;
+                    }
+                    if(input)
+                    {
+                        write(STDOUT_FILENO, game_start_message, GAME_START_LEN);
+                        goto game_start;
+                    }
+                }
+            }
+        }
+    }
+game_start:
+    // Starting game aka closing connections
+    for(int i = 0; i < player_count; i++)
+    {
+        write(players[i].socket, game_start_message, GAME_START_LEN);
+        close(players[i].socket);
+    }
     retval = EXIT_SUCCESS;
 
 done:
     socket_close(tcpfd);
     socket_close(udpfd);
     return retval;
+}
+
+void handle_new_player(int serverfd, struct pollfd *fds, nfds_t *nfds, player_t *player, int *player_count, in_port_t udp_port)
+{
+    struct sockaddr_in player_addr;
+    socklen_t          addr_len;
+    int                playerfd;
+    uint8_t            buf[INFO_LEN];
+    in_port_t          playerport;
+    char               client_host[NI_MAXHOST];
+
+    if(*player_count >= MAX_PLAYERS)
+    {
+        printf("Maximum player count reached.\n");
+        return;
+    }
+
+    addr_len = sizeof(player_addr);
+    playerfd = accept(serverfd, (struct sockaddr *)&player_addr, &addr_len);
+    if(playerfd == -1)
+    {
+        perror("accept");
+        return;
+    }
+
+    read(playerfd, buf, INFO_LEN);
+
+    memcpy(player->username, buf, NAME_LEN);
+    memcpy(&playerport, &buf[NAME_LEN], sizeof(in_port_t));
+    player->id     = *player_count;
+    player->socket = playerfd;
+
+    getnameinfo((struct sockaddr *)&player_addr, addr_len, client_host, NI_MAXHOST, NULL, 0, 0);
+
+    player->addr          = player_addr;
+    player->addr.sin_port = playerport;
+
+    (*player_count)++;
+
+    // add player socket to poll
+    fds[*nfds].fd     = playerfd;
+    fds[*nfds].events = POLLIN;
+    (*nfds)++;
+
+    // Send udp port
+    write(playerfd, &udp_port, sizeof(in_port_t));
+
+    printf("Player %s joined the lobby from %s:%d\n", player->username, client_host, ntohs(player->addr.sin_port));
 }
 
 /* Pairs SIGINT with sig_handler */
