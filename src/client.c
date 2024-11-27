@@ -58,11 +58,16 @@ int main(int argc, char *argv[])
 
     printf("%s", game_start_message);
 
+    // TODO need to receive a lot of shit here
+
     // Start the game here
+
+    socket_close(serverfd); // Not needed anymore
+    
+    // TODO gameloop and udp
 
     retval = EXIT_SUCCESS;
 
-    socket_close(serverfd);
     socket_close(udpfd);
     return retval;
 }

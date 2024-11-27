@@ -1,4 +1,5 @@
 #include "../include/setup.h"
+#include "../include/game.h"
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -12,33 +13,30 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define MAX_PLAYERS 25
-#define NAME_LEN 5
-#define INFO_LEN 7
+#define INFO_LEN 10
 #define GAME_START_LEN 17
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-typedef struct Player
+typedef struct PlayerInfo
 {
     int                id;
     int                socket;
     struct sockaddr_in addr;
-    char               username[NAME_LEN];
-} player_t;
+    char               username[NAME_LEN]; // 8 bytes
+} player_info_t;
 
 typedef struct ThreadData
 {
     int           serverfd;
     int           player_count;
-    player_t      players[MAX_PLAYERS];
+    player_info_t      players[MAX_PLAYERS];
     struct pollfd fds[MAX_PLAYERS + 2];
     nfds_t        nfds;
     in_port_t     udp_port;
 } thread_data_t;
 
 void       *handle_new_player(void *arg);
-void        new_player(int serverfd, struct pollfd *fds, nfds_t *nfds, player_t *player, int *player_count, in_port_t udp_port);
 static void setup_signal_handler(void);
 static void sig_handler(int sig);
 
@@ -62,7 +60,7 @@ int main(void)
     findaddress(&address, address_str);
 
     memset(&thread_data, 0, sizeof(thread_data));
-    thread_data.player_count = 0;
+    thread_data.player_count = -1;
 
     tcp_port             = setup_and_bind(&(thread_data.serverfd), &tcp_addr, address, addr_len, SOCK_STREAM);
     thread_data.udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM);
@@ -96,8 +94,8 @@ int main(void)
             {
                 if(thread_data.fds[i].fd == thread_data.serverfd)
                 {
-                    // TODO change to thread.
-                    // handle_new_player(thread_data.serverfd, thread_data.fds, &(thread_data.nfds), &(thread_data.players[thread_data.player_count]), &(thread_data.player_count), thread_data.udp_port);
+                    // player count is the only important shared variable so no need for mutex here
+                    thread_data.player_count++;
                     if(pthread_create(&thread, NULL, handle_new_player, (void *)&thread_data) != 0)
                     {
                         perror("pthread_create");
@@ -152,7 +150,7 @@ void *handle_new_player(void *arg)
     uint8_t            buf[INFO_LEN];
     in_port_t          playerport;
     char               client_host[NI_MAXHOST];
-    player_t          *player = &(data->players[data->player_count]);
+    player_info_t          *player = &(data->players[data->player_count]);
 
     if(data->player_count >= MAX_PLAYERS)
     {
@@ -178,8 +176,6 @@ void *handle_new_player(void *arg)
     player->addr          = player_addr;
     player->addr.sin_port = playerport;
 
-    data->player_count++;
-
     // add player socket to poll
     data->fds[data->nfds].fd     = playerfd;
     data->fds[data->nfds].events = POLLIN;
@@ -190,54 +186,6 @@ void *handle_new_player(void *arg)
 
     printf("Player %s joined the lobby from %s:%d\n", player->username, client_host, ntohs(player->addr.sin_port));
     return NULL;
-}
-
-void new_player(int serverfd, struct pollfd *fds, nfds_t *nfds, player_t *player, int *player_count, in_port_t udp_port)
-{
-    struct sockaddr_in player_addr;
-    socklen_t          addr_len;
-    int                playerfd;
-    uint8_t            buf[INFO_LEN];
-    in_port_t          playerport;
-    char               client_host[NI_MAXHOST];
-
-    if(*player_count >= MAX_PLAYERS)
-    {
-        printf("Maximum player count reached.\n");
-        return;
-    }
-
-    addr_len = sizeof(player_addr);
-    playerfd = accept(serverfd, (struct sockaddr *)&player_addr, &addr_len);
-    if(playerfd == -1)
-    {
-        perror("accept");
-        return;
-    }
-
-    read(playerfd, buf, INFO_LEN);
-
-    memcpy(player->username, buf, NAME_LEN);
-    memcpy(&playerport, &buf[NAME_LEN], sizeof(in_port_t));
-    player->id     = *player_count;
-    player->socket = playerfd;
-
-    getnameinfo((struct sockaddr *)&player_addr, addr_len, client_host, NI_MAXHOST, NULL, 0, 0);
-
-    player->addr          = player_addr;
-    player->addr.sin_port = playerport;
-
-    (*player_count)++;
-
-    // add player socket to poll
-    fds[*nfds].fd     = playerfd;
-    fds[*nfds].events = POLLIN;
-    (*nfds)++;
-
-    // Send udp port
-    write(playerfd, &udp_port, sizeof(in_port_t));
-
-    printf("Player %s joined the lobby from %s:%d\n", player->username, client_host, ntohs(player->addr.sin_port));
 }
 
 /* Pairs SIGINT with sig_handler */
