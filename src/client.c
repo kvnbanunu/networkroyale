@@ -1,4 +1,5 @@
 #include "../include/args.h"
+#include "../include/controller.h"
 #include "../include/setup.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -57,12 +58,14 @@ int main(int argc, char *argv[])
     read(serverfd, game_start_message, GAME_START_LEN);
 
     printf("%s", game_start_message);
+    socket_close(serverfd);
 
     // Start the game here
+    printf("GOING TO START THE CONTROLLER\n");
+    controller();
 
     retval = EXIT_SUCCESS;
 
-    socket_close(serverfd);
     socket_close(udpfd);
     return retval;
 }
