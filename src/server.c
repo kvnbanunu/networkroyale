@@ -1,6 +1,7 @@
 #include "../include/setup.h"
 #include "../include/game.h"
 #include <arpa/inet.h>
+#include <cstdlib>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -15,15 +16,16 @@
 
 #define INFO_LEN 10
 #define GAME_START_LEN 17
+#define GAME_TIMER 5
+#define COORDS_BUF_LEN 128 // TODO set this to smt else
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 typedef struct PlayerInfo
 {
-    int                id;
     int                socket;
     struct sockaddr_in addr;
-    char               username[NAME_LEN]; // 8 bytes
+    player_t data;
 } player_info_t;
 
 typedef struct ThreadData
@@ -53,6 +55,8 @@ int main(void)
     socklen_t          addr_len = sizeof(struct sockaddr);
     thread_data_t      thread_data;
     pthread_t          thread;
+    event_t event_head;
+    input_t inputs[MAX_PLAYERS];
 
     setup_signal_handler();
 
@@ -127,7 +131,20 @@ int main(void)
         }
     }
 game_start:
-    // Starting game aka closing connections
+    socket_close(thread_data.serverfd);
+    thread_data.serverfd = 0;
+    
+    while(!exit_flag)
+    {
+        memset(inputs, 0, MAX_PLAYERS * sizeof(input_t));
+        event_head = NULL;
+        receive_input(inputs);
+        process_events(&event_head, inputs);
+    }
+    
+
+close:
+    // closing connections
     for(int i = 0; i < thread_data.player_count; i++)
     {
         write(thread_data.players[i].socket, game_start_message, GAME_START_LEN);
@@ -136,39 +153,38 @@ game_start:
     retval = EXIT_SUCCESS;
 
 done:
-    socket_close(thread_data.serverfd);
     socket_close(udpfd);
     return retval;
 }
 
 void *handle_new_player(void *arg)
 {
-    thread_data_t     *data = (thread_data_t *)arg;
+    thread_data_t     *info = (thread_data_t *)arg;
     struct sockaddr_in player_addr;
     socklen_t          addr_len;
     int                playerfd;
     uint8_t            buf[INFO_LEN];
     in_port_t          playerport;
     char               client_host[NI_MAXHOST];
-    player_info_t          *player = &(data->players[data->player_count]);
+    player_info_t          *player = &(info->players[info->player_count]);
 
-    if(data->player_count >= MAX_PLAYERS)
+    if(info->player_count >= MAX_PLAYERS)
     {
         printf("Maximum player count reached.\n");
         pthread_exit(NULL);
     }
 
     addr_len = sizeof(player_addr);
-    playerfd = accept(data->serverfd, (struct sockaddr *)&player_addr, &addr_len);
+    playerfd = accept(info->serverfd, (struct sockaddr *)&player_addr, &addr_len);
     if(playerfd == -1)
     {
         perror("accept");
         pthread_exit(NULL);
     }
     read(playerfd, buf, INFO_LEN);
-    memcpy(player->username, buf, NAME_LEN);
+    memcpy(player->data.username, buf, NAME_LEN);
     memcpy(&playerport, &buf[NAME_LEN], sizeof(in_port_t));
-    player->id     = data->player_count;
+    player->data.id     = info->player_count;
     player->socket = playerfd;
 
     getnameinfo((struct sockaddr *)&player_addr, addr_len, client_host, NI_MAXHOST, NULL, 0, 0);
@@ -177,15 +193,29 @@ void *handle_new_player(void *arg)
     player->addr.sin_port = playerport;
 
     // add player socket to poll
-    data->fds[data->nfds].fd     = playerfd;
-    data->fds[data->nfds].events = POLLIN;
-    data->nfds++;
+    info->fds[info->nfds].fd     = playerfd;
+    info->fds[info->nfds].events = POLLIN;
+    info->nfds++;
 
     // send udp port
-    write(playerfd, &data->udp_port, sizeof(in_port_t));
+    write(playerfd, &info->udp_port, sizeof(in_port_t));
 
-    printf("Player %s joined the lobby from %s:%d\n", player->username, client_host, ntohs(player->addr.sin_port));
+    printf("Player %s joined the lobby from %s:%d\n", player->data.username, client_host, ntohs(player->addr.sin_port));
     return NULL;
+}
+
+static void receive_input(input_t inputs[], int connected_players, int sockfd)
+{
+    int players_moved = 0;
+    time_t start;
+    time_t end;
+    time(&start);
+    end = start + GAME_TIMER;
+    while(start <= end && players_moved++ < connected_players && !exit_flag )
+    {
+        uint8_t buf[]; // TODO fill this
+        recv(sockfd, &buf, COORDS_BUF_LEN);
+    }
 }
 
 /* Pairs SIGINT with sig_handler */

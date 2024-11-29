@@ -1,5 +1,5 @@
 build: clean
-	gcc main.c -o outfile
+	gcc main.c ../src/game.c -o outfile
 
 run: build
 	./outfile

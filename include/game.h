@@ -20,6 +20,21 @@ typedef struct Class_Base
     int crit_rate;
 } class_t;
 
+typedef struct Client_Input
+{
+    uint8_t id;
+    uint8_t input;
+} input_t;
+
+enum INPUTS
+{
+    INPUT_UP,
+    INPUT_DOWN,
+    INPUT_RIGHT,
+    INPUT_LEFT,
+    INPUT_SKILL
+};
+
 typedef struct Coordinate
 {
     uint8_t x;
@@ -64,10 +79,14 @@ enum Class_ID
     ASSASSIN
 };
 
+/*
 void send_position();
 void receive_position();
 void check_inbound();
 void check_collision();
 void battle();
+*/
+
+void run();
 
 #endif // GAME_H

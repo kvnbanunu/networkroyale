@@ -3,7 +3,7 @@
 
 #define PERCENT 100
 
-class_t class_list[] = {
+const class_t class_list[] = {
     // NPC     hp  atk dmg  def  eva   cr
     {MOB,       5,  3,  2,   1,   0,   5},
     // Starting classes
@@ -18,18 +18,35 @@ class_t class_list[] = {
     {ASSASSIN,  8,  3,  0,   2,  50, 100}
 };
 
-static void add_event(event_t *list, event_t *event)
+void add_event(event_t *list, event_t *event)
 {
     event_t curr = *list;
+    if (curr == NULL)
+    {
+        *list = *event;
+        return;
+    }
     while(curr->next != NULL)
     {
         curr = curr->next;
     }
     curr->next = *event;
-    (*event)->next = NULL;
 }
 
-static void init_event(event_t *event, uint8_t actor, uint8_t target, uint8_t dmg, uint8_t dodge, uint8_t death, uint8_t skill, uint8_t jobadv)
+void clear_events(event_t *list)
+{
+    event_t curr = *list;
+    event_t to_del = NULL;
+    while(curr->next != NULL)
+    {
+        to_del = curr;
+        free(to_del);
+        curr = curr->next;
+    }
+    free(curr);
+}
+
+void init_event(event_t *event, uint8_t actor, uint8_t target, uint8_t dmg, uint8_t dodge, uint8_t death, uint8_t skill, uint8_t jobadv)
 {
     (*event)->actor = actor;
     (*event)->target = target;
@@ -75,7 +92,7 @@ static uint8_t dmg_calc(class_t attacker, class_t defender, int a_skill, int d_s
     return (uint8_t)(result + attacker.dmg_mod - def_mod);
 }
 
-static void combat(event_t *list, player_t *p1, player_t *p2)
+void combat(event_t *list, player_t *p1, player_t *p2)
 {
     player_t *a = p1;
     player_t *d = p2;
@@ -132,4 +149,14 @@ static void combat(event_t *list, player_t *p1, player_t *p2)
 }
 
 
-
+void process_events(event_t *events, player_info_t *players, input_t *inputs)
+{
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        player_t 
+        if(!check_inbound())
+        {
+            continue; // no movement
+        }
+    }
+}
