@@ -1,6 +1,11 @@
 #include "../include/args.h"
-#include "../include/controller.h"
+// #include "../include/controller.h"
 #include "../include/setup.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_error.h>
+#include <SDL2/SDL_events.h>
+#include <SDL2/SDL_gamecontroller.h>
+#include <SDL2/SDL_video.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -8,11 +13,14 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
+#include <ncurses.h>
 #define NAME_LEN 5
 #define INFO_LEN 7
 #define GAME_START_LEN 17
 
+int            check_controller(void);
+_Noreturn void read_controller_input(SDL_GameController *con);
+_Noreturn void read_keyboard_input(void);
 int main(int argc, char *argv[])
 {
     int                serverfd;
@@ -33,13 +41,14 @@ int main(int argc, char *argv[])
     struct sockaddr_in udp_addr;
     socklen_t          addr_len = sizeof(struct sockaddr);
 
+    int conflag;
+
     parse_args(argc, argv, &server_address_str, &server_port_str);
     handle_args(argv[0], server_address_str, server_port_str, &server_port);
 
     message = "Enter a username:\n";
     write(1, message, strlen(message) + 1);
     read(1, username, NAME_LEN);
-
     findaddress(&address, address_str);
     udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM);
 
@@ -60,12 +69,157 @@ int main(int argc, char *argv[])
     printf("%s", game_start_message);
     socket_close(serverfd);
 
-    // Start the game here
-    printf("GOING TO START THE CONTROLLER\n");
-    controller();
+    // Must happen before any SDL related code
+    if(SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) != 0)
+    {
+        printf("INIT ERR\n");
+        return EXIT_FAILURE;
+    }
 
+    conflag = check_controller();
+
+    if(conflag == 1)
+    {
+        SDL_GameController *con = SDL_GameControllerOpen(0);
+        read_controller_input(con);
+    }
+
+    // Start the game here
     retval = EXIT_SUCCESS;
 
+    /*
+     * while(1)
+     * get_input <--
+     *
+     *
+     *
+     * send_input
+     * read_input <-- blocks until server updates
+     * render
+     */
+
+    SDL_Quit();
     socket_close(udpfd);
     return retval;
 }
+
+int check_controller(void)
+{
+    int con_count;
+
+    con_count = SDL_NumJoysticks();
+
+    if(con_count < 1)
+    {
+        printf("No controller detected\n");
+        return 0;
+    }
+
+    printf("Controller detected, using controller input\n");
+    return 1;
+}
+
+void read_controller_input(SDL_GameController *con)
+{
+    SDL_Event event;
+    while(1)
+    {
+        while(SDL_PollEvent(&event))
+        {
+            if(event.type == SDL_QUIT)
+            {
+                SDL_GameControllerClose(con);
+                SDL_Quit();
+            }
+
+            if(event.type == SDL_CONTROLLERBUTTONDOWN)
+            {
+                // send udp enum
+                printf("Controller button %d\n", event.cbutton.button);
+            }
+        }
+
+        switch(getch())
+        {
+            case KEY_RIGHT:
+                printw("right\n");
+                refresh();
+                //send udp
+                break;
+            case KEY_LEFT:
+                printw("left\n");
+                refresh();
+                //send udp
+                break;
+            case KEY_UP:
+                printw("up\n");
+                refresh();
+                //send udp
+                break;
+            case KEY_DOWN:
+                printw("down\n");
+                refresh();
+                //send udp
+                break;
+            case ' ':
+                break;
+            case 'w':
+                break;
+            case 'a':
+                break;
+            case 's':
+                break;
+            case 'd':
+                break;
+
+        }
+    }
+}
+
+
+void read_keyboard_input(void)
+{
+    initscr();
+    keypad(stdscr, TRUE);
+    noecho();
+    cbreak();
+    while(1)
+    {
+    
+        switch(getch())
+        {
+            case KEY_RIGHT:
+                printw("right\n");
+                refresh();
+                //send udp
+                break;
+            case KEY_LEFT:
+                printw("left\n");
+                refresh();
+                //send udp
+                break;
+            case KEY_UP:
+                printw("up\n");
+                refresh();
+                //send udp
+                break;
+            case KEY_DOWN:
+                printw("down\n");
+                refresh();
+                //send udp
+                break;
+            case ' ':
+                break;
+            case 'w':
+                break;
+            case 'a':
+                break;
+            case 's':
+                break;
+            case 'd':
+                break;
+        }
+        refresh();
+    }
+}
+
