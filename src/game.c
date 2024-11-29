@@ -95,14 +95,14 @@ static uint8_t dmg_calc(class_t attacker, class_t defender, int a_skill, int d_s
     return (uint8_t)(result + attacker.dmg_mod - def_mod);
 }
 
-static void combat(event_t *list, player_t *p1, player_t *p2, int *alive_players)
+// Returns the amount of players slain this combat turn
+static int combat(event_t *list, player_t *p1, player_t *p2)
 {
     player_t *a = p1;
     player_t *d = p2;
     uint8_t dmg;
     event_t event;
     uint8_t dodge_flag = 0;
-    int winner = 1;
 
     // determine combat turn order
     if(p1->class_type < p2->class_type)
@@ -126,8 +126,7 @@ static void combat(event_t *list, player_t *p1, player_t *p2, int *alive_players
         d->is_alive = 0;
         d->hp = 0;
         a->exp++;
-        *alive_players--;
-        return;
+        return 1;
     }
     else
     {
@@ -146,22 +145,111 @@ static void combat(event_t *list, player_t *p1, player_t *p2, int *alive_players
             a->is_alive = 0;
             a->hp = 0;
             d->exp++;
-            *alive_players--;
-            return;
+            return 1;
         }
         a->hp -= dmg;
     }
+    return 0;
 }
 
-
-void process_events(event_t *events, player_info_t *players, input_t *inputs, int *alive_players)
+static int check_inbounds(coord_t coord, enum INPUTS input, int outerbound)
 {
+    switch (input)
+    {
+        case INPUT_UP:
+            return (coord.y - 1 >= 0);
+        case INPUT_DOWN:
+            return (coord.y + 1 <= outerbound);
+        case INPUT_LEFT:
+            return (coord.x - 1 >= 0);
+        case INPUT_RIGHT:
+            return (coord.x + 1 <= outerbound);
+        default:
+            return 1; // No movement so should be inbound
+    }
+}
+
+// If the (coord + input) on the map has a player on it, return the id(+1) or 0
+static int check_collision(coord_t coord, enum INPUTS input, int outerbound, int *game_map)
+{
+    int x = (int)coord.x;
+    int y = (int)coord.y;
+    switch(input)
+    {
+        case INPUT_UP:
+            return *((game_map + x * (outerbound + 1) + (y - 1)));
+        case INPUT_DOWN:
+            return *((game_map + x * (outerbound + 1) + (y + 1)));
+        case INPUT_LEFT:
+            return *((game_map + (x - 1) * (outerbound + 1) + y));
+        case INPUT_RIGHT:
+            return *((game_map + (x + 1) * (outerbound + 1) + y));
+        default:
+            return 0;
+    }
+}
+
+void init_positions(player_t players[], int num_players, int outerbound, int *game_map)
+{
+    int x;
+    int y;
+    for(int i = 0; i < num_players; i++)
+    {
+        x = rand()%outerbound;
+        y = rand()%outerbound;
+
+        // Generate new coord until position is available 
+        while(*((game_map + x * (outerbound + 1)) + y))
+        {
+            x = rand()%outerbound;
+            y = rand()%outerbound;
+        }
+        *((game_map + x * (outerbound + 1)) + y) = players[i].id + 1;
+        players[i].pos.x = x;
+        players[i].pos.y = y;
+    }
+}
+
+static void move_player(player_t * player, enum INPUTS input)
+{
+    switch(input)
+    {
+        case INPUT_UP:
+            player->pos.y--;
+        case INPUT_DOWN:
+            player->pos.y++;
+        case INPUT_LEFT:
+            player->pos.x--;
+        case INPUT_RIGHT:
+            player->pos.x++;
+        default:
+            break;
+    }
+}
+
+void process_inputs(event_t *events, player_t players[], input_t inputs[], int outerbound, int *alive_players, int *game_map)
+{
+    coord_t* pos;
     for (int i = 0; i < MAX_PLAYERS; i++)
     {
-        player_t 
-        if(!check_inbound())
+        coord_t* pos;
+        int collision;
+        if(inputs[i].input == INPUT_SKILL)
         {
-            continue; // no movement
+            // TODO activate skill prob needs active players and event
+            continue;
         }
+        pos = &players[i].pos;
+        if(!check_inbounds(*pos, inputs[i].input, outerbound))
+        {
+            continue; // can't move
+        }
+        collision = check_collision(*pos, inputs[i].input, outerbound, game_map);
+        if(!collision)
+        {
+            move_player(&players[i], inputs[i].input);
+            continue;
+        }
+        // TODO do battle
     }
 }

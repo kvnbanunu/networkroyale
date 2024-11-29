@@ -13,35 +13,39 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
 
+#define MAP_BOUNDS 255 // Inclusive
 #define INFO_LEN 10
 #define GAME_START_LEN 17
 #define LISTEN_TIMEOUT 5
 #define COORDS_BUF_LEN 128 // TODO set this to smt else
 
+
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-typedef struct PlayerInfo
+typedef struct ClientInfo
 {
     int                socket;
     struct sockaddr_in addr;
-    player_t data;
-} player_info_t;
+} client_info_t;
 
 typedef struct ThreadData
 {
     int           serverfd;
     int           player_count;
-    player_info_t      players[MAX_PLAYERS];
+    client_info_t clients[MAX_PLAYERS];
+    player_t      players[MAX_PLAYERS];
     struct pollfd fds[MAX_PLAYERS + 2];
     nfds_t        nfds;
     in_port_t     udp_port;
 } thread_data_t;
 
 static void       *handle_new_player(void *arg);
-static int receive_input(input_t inputs[], int sockfd);
+static void receive_input(input_t inputs[], int sockfd);
+static void fill_random_moves(input_t inputs[], player_t players[], int end);
 static void setup_signal_handler(void);
 static void sig_handler(int sig);
 
@@ -50,6 +54,7 @@ int main(void)
     int                udpfd;
     int                retval = EXIT_FAILURE;
     int alive_players = MAX_PLAYERS;
+    int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]; // This will hold player ids offset by 1
     char               address_str[INET_ADDRSTRLEN];
     const char        *game_start_message = "Game starting...\n";
     struct sockaddr_in tcp_addr;
@@ -137,16 +142,18 @@ int main(void)
 game_start:
     socket_close(thread_data.serverfd);
     thread_data.serverfd = 0;
-    
+    srand(time(0)); // SEED ONLY ONCE
+
+    init_positions(thread_data.players, MAX_PLAYERS, MAP_BOUNDS, game_map);
+
     while(!exit_flag && alive_players > 1)
     {
-        int connected_players;
-        memset(inputs, 0, MAX_PLAYERS * sizeof(input_t));
+        memset(inputs, 0, MAX_PLAYERS);
         event_head = NULL;
         
-        connected_players = receive_input(inputs, udpfd);
+        receive_input(inputs, udpfd);
+        fill_random_moves(inputs, thread_data.players, MAX_PLAYERS);
         // TODO
-        // fill in the missing inputs[connected_players -> MAX_PLAYERS]
         // process_events(&event_head, inputs);
         // spawn processes and send data
     }
@@ -155,8 +162,8 @@ close:
     // closing connections
     for(int i = 0; i < thread_data.player_count; i++)
     {
-        write(thread_data.players[i].socket, game_start_message, GAME_START_LEN);
-        close(thread_data.players[i].socket);
+        write(thread_data.clients[i].socket, game_start_message, GAME_START_LEN);
+        close(thread_data.clients[i].socket);
     }
     retval = EXIT_SUCCESS;
 
@@ -168,13 +175,14 @@ done:
 static void *handle_new_player(void *arg)
 {
     thread_data_t     *info = (thread_data_t *)arg;
+    int count = info->player_count;
     struct sockaddr_in player_addr;
     socklen_t          addr_len;
     int                playerfd;
     uint8_t            buf[INFO_LEN];
-    in_port_t          playerport;
+    in_port_t          player_port;
     char               client_host[NI_MAXHOST];
-    player_info_t          *player = &(info->players[info->player_count]);
+    player_t          *player = &(info->players[count]);
 
     if(info->player_count >= MAX_PLAYERS)
     {
@@ -190,15 +198,15 @@ static void *handle_new_player(void *arg)
         pthread_exit(NULL);
     }
     read(playerfd, buf, INFO_LEN);
-    memcpy(player->data.username, buf, NAME_LEN);
-    memcpy(&playerport, &buf[NAME_LEN], sizeof(in_port_t));
-    player->data.id     = info->player_count;
-    player->socket = playerfd;
+    memcpy(player->username, buf, NAME_LEN);
+    memcpy(&player_port, &buf[NAME_LEN], sizeof(in_port_t));
+    player->id     = count;
+    info->clients[count].socket = playerfd;
 
     getnameinfo((struct sockaddr *)&player_addr, addr_len, client_host, NI_MAXHOST, NULL, 0, 0);
 
-    player->addr          = player_addr;
-    player->addr.sin_port = playerport;
+    info->clients[count].addr = player_addr;
+    info->clients[count].addr.sin_port = player_port;
 
     // add player socket to poll
     info->fds[info->nfds].fd     = playerfd;
@@ -208,15 +216,14 @@ static void *handle_new_player(void *arg)
     // send udp port
     write(playerfd, &info->udp_port, sizeof(in_port_t));
 
-    printf("Player %s joined the lobby from %s:%d\n", player->data.username, client_host, ntohs(player->addr.sin_port));
+    printf("Player %s joined the lobby from %s:%d\n", info->players[count].username, client_host, ntohs(info->clients[count].addr.sin_port));
     return NULL;
 }
 
-static int receive_input(input_t inputs[], int sockfd)
+static void receive_input(input_t inputs[], int sockfd)
 {
     fd_set readfds;
     struct timeval timeout;
-    int connected_players = 0;
     int activity;
     uint8_t buf[2]; // id, input
 
@@ -248,13 +255,22 @@ static int receive_input(input_t inputs[], int sockfd)
                 perror("recv error");
                 break;
             }
-            inputs[connected_players].set = 1;
-            inputs[connected_players].id = buf[0];
-            inputs[connected_players].input = buf[1];
-            connected_players++;
+            inputs[buf[0]].meta = 1;
+            inputs[buf[0]].input = buf[1];
         }
     }
-    return connected_players;
+}
+
+static void fill_random_moves(input_t inputs[], player_t players[], int end)
+{
+    for(int i = 0; i < end; i++)
+    {
+        if(inputs[i].meta == 0 && players[i].is_alive)
+        {
+            inputs[i].meta = 1;
+            inputs[i].input = rand()%3; // Movement only
+        }
+    }
 }
 
 /* Pairs SIGINT with sig_handler */

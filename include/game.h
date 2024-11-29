@@ -20,21 +20,20 @@ typedef struct Class_Base
     int crit_rate;
 } class_t;
 
-typedef struct Client_Input
-{
-    uint8_t set;
-    uint8_t id;
-    uint8_t input;
-} input_t;
-
 enum INPUTS
 {
     INPUT_UP,
     INPUT_DOWN,
-    INPUT_RIGHT,
     INPUT_LEFT,
+    INPUT_RIGHT,
     INPUT_SKILL
 };
+
+typedef struct Client_Input
+{
+    uint8_t meta;
+    enum INPUTS input;
+} input_t;
 
 typedef struct Coordinate
 {
@@ -88,6 +87,7 @@ void check_collision();
 void battle();
 */
 
-void run();
+void init_positions(player_t players[], int num_players, int outerbound, int *game_map);
+void process_inputs(event_t *events, player_t players[], input_t inputs[], int outerbound, int *alive_players, int *game_map);
 
 #endif // GAME_H
