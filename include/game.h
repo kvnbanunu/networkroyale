@@ -18,6 +18,7 @@ typedef struct Class_Base
     int def;
     int eva;
     int crit_rate;
+    int skill_duration;
 } class_t;
 
 enum INPUTS
@@ -88,6 +89,6 @@ void battle();
 */
 
 void init_positions(player_t players[], int num_players, int outerbound, int *game_map);
-void process_inputs(event_t *events, player_t players[], input_t inputs[], int outerbound, int *alive_players, int *game_map);
+int process_inputs(event_t *events, player_t players[], input_t inputs[], int outerbound, int *game_map);
 
 #endif // GAME_H

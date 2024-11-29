@@ -23,7 +23,6 @@
 #define LISTEN_TIMEOUT 5
 #define COORDS_BUF_LEN 128 // TODO set this to smt else
 
-
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 typedef struct ClientInfo
@@ -144,7 +143,7 @@ game_start:
     thread_data.serverfd = 0;
     srand(time(0)); // SEED ONLY ONCE
 
-    init_positions(thread_data.players, MAX_PLAYERS, MAP_BOUNDS, game_map);
+    init_positions(thread_data.players, MAX_PLAYERS, MAP_BOUNDS, (int*)game_map);
 
     while(!exit_flag && alive_players > 1)
     {
@@ -153,6 +152,7 @@ game_start:
         
         receive_input(inputs, udpfd);
         fill_random_moves(inputs, thread_data.players, MAX_PLAYERS);
+        active_players -= process_inputs(&event_head, thread_data.players, inputs, MAP_BOUNDS, (int*)game_map);
         // TODO
         // process_events(&event_head, inputs);
         // spawn processes and send data

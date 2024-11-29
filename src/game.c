@@ -4,18 +4,18 @@
 #define PERCENT 100
 
 const class_t class_list[] = {
-    // NPC     hp  atk dmg  def  eva   cr
-    {MOB,       5,  3,  2,   1,   0,   5},
+    // NPC     hp  atk dmg  def  eva   cr skill duration
+    {MOB,       5,  3,  2,   1,   0,   5,   0},
     // Starting classes
-    {CLERIC,   20,  6,  4,   4,   0,   5},
-    {FIGHTER,  15,  6,  3,   3,   0,   5},
-    {MAGE,     10,  6,  6,   1,   0,   5},
-    {ROGUE,    10,  3,  4,   1,  25,  50},
+    {CLERIC,   20,  6,  4,   4,   0,   5,   0},
+    {FIGHTER,  15,  6,  3,   3,   0,   5,   5},
+    {MAGE,     10,  6,  6,   1,   0,   5,   0},
+    {ROGUE,    10,  3,  4,   1,  25,  50,   5},
     // Promoted classes
-    {PALADIN,  30,  4,  0,   8,   0,  10},
-    {KNIGHT,   16,  5,  0,   3,   0,  10},
-    {WIZARD,   10, 20,  0,   5,   0,  10},
-    {ASSASSIN,  8,  3,  0,   2,  50, 100}
+    {PALADIN,  30,  4,  0,   8,   0,  10,   0},
+    {KNIGHT,   16,  5,  0,   3,   0,  10,  10},
+    {WIZARD,   10, 20,  0,   5,   0,  10,   0},
+    {ASSASSIN,  8,  3,  0,   2,  50, 100,  10}
 };
 
 static void add_event(event_t *list, event_t *event)
@@ -227,9 +227,33 @@ static void move_player(player_t * player, enum INPUTS input)
     }
 }
 
-void process_inputs(event_t *events, player_t players[], input_t inputs[], int outerbound, int *alive_players, int *game_map)
+static void activate_skill(event_t *events, player_t *player)
+{
+    if(!(player->has_skill) || player->active_skill)
+    {
+        return;
+    }
+    player->has_skill--;
+    player->active_skill = class_list[player->class_type].skill_duration;
+    switch(player->class_type)
+    {
+        case(CLERIC):
+            break;
+        case(PALADIN):
+            break;
+        case(MAGE):
+            break;
+        case(WIZARD):
+            break;
+        default:
+            break;
+    }
+}
+
+int process_inputs(event_t *events, player_t players[], input_t inputs[], int outerbound, int *game_map)
 {
     coord_t* pos;
+    int slain = 0;
     for (int i = 0; i < MAX_PLAYERS; i++)
     {
         coord_t* pos;
@@ -250,6 +274,8 @@ void process_inputs(event_t *events, player_t players[], input_t inputs[], int o
             move_player(&players[i], inputs[i].input);
             continue;
         }
-        // TODO do battle
+        slain += combat(events, &players[i], &players[collision]);
+        players[i].active_skill = (players[i].active_skill - 1 < 0) ? 0 : players[i].active_skill--;
     }
+    return slain;
 }
