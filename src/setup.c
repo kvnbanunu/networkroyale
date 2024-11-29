@@ -1,5 +1,6 @@
 #include "../include/setup.h"
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <ifaddrs.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -53,7 +54,7 @@ void findaddress(in_addr_t *address, char *address_str)
 }
 
 /* Creates socket, sets addr fields, binds socket, updates the addr, returns port as network endian. */
-in_port_t setup_and_bind(int *sockfd, struct sockaddr_in *addr, in_addr_t address, socklen_t addr_len, int type)
+in_port_t setup_and_bind(int *sockfd, struct sockaddr_in *addr, in_addr_t address, socklen_t addr_len, int type, int flag)
 {
     *sockfd = socket(AF_INET, type, 0);
     if(*sockfd == -1)
@@ -61,6 +62,25 @@ in_port_t setup_and_bind(int *sockfd, struct sockaddr_in *addr, in_addr_t addres
         perror("socket");
         exit(EXIT_FAILURE);
     }
+
+    if(flag != 0)
+    {
+        int flags = fcntl(*sockfd, F_GETFL, 0);
+        if (flags < 0)
+        {
+            perror("fcntl(F_GETFL)");
+            close(*sockfd);
+            exit(EXIT_FAILURE);
+        }
+
+        if(fcntl(sockfd, F_SETFL, flags | flag) < 0)
+        {
+            perror("fcntl(F_GETFL)");
+            close(*sockfd);
+            exit(EXIT_FAILURE);
+        }
+    }
+
     memset(addr, 0, sizeof(*addr));
     addr->sin_family = AF_INET;
     addr->sin_addr   = *(struct in_addr *)&address;

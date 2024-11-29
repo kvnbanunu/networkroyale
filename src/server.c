@@ -1,7 +1,6 @@
 #include "../include/setup.h"
 #include "../include/game.h"
 #include <arpa/inet.h>
-#include <cstdlib>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -10,13 +9,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #define INFO_LEN 10
 #define GAME_START_LEN 17
-#define GAME_TIMER 5
+#define LISTEN_TIMEOUT 5
 #define COORDS_BUF_LEN 128 // TODO set this to smt else
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -38,7 +40,8 @@ typedef struct ThreadData
     in_port_t     udp_port;
 } thread_data_t;
 
-void       *handle_new_player(void *arg);
+static void       *handle_new_player(void *arg);
+static int receive_input(input_t inputs[], int sockfd);
 static void setup_signal_handler(void);
 static void sig_handler(int sig);
 
@@ -46,6 +49,7 @@ int main(void)
 {
     int                udpfd;
     int                retval = EXIT_FAILURE;
+    int alive_players = MAX_PLAYERS;
     char               address_str[INET_ADDRSTRLEN];
     const char        *game_start_message = "Game starting...\n";
     struct sockaddr_in tcp_addr;
@@ -66,8 +70,8 @@ int main(void)
     memset(&thread_data, 0, sizeof(thread_data));
     thread_data.player_count = -1;
 
-    tcp_port             = setup_and_bind(&(thread_data.serverfd), &tcp_addr, address, addr_len, SOCK_STREAM);
-    thread_data.udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM);
+    tcp_port             = setup_and_bind(&(thread_data.serverfd), &tcp_addr, address, addr_len, SOCK_STREAM, 0);
+    thread_data.udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM, O_NONBLOCK);
 
     if(listen(thread_data.serverfd, MAX_PLAYERS) == -1)
     {
@@ -134,14 +138,18 @@ game_start:
     socket_close(thread_data.serverfd);
     thread_data.serverfd = 0;
     
-    while(!exit_flag)
+    while(!exit_flag && alive_players > 1)
     {
+        int connected_players;
         memset(inputs, 0, MAX_PLAYERS * sizeof(input_t));
         event_head = NULL;
-        receive_input(inputs);
-        process_events(&event_head, inputs);
+        
+        connected_players = receive_input(inputs, udpfd);
+        // TODO
+        // fill in the missing inputs[connected_players -> MAX_PLAYERS]
+        // process_events(&event_head, inputs);
+        // spawn processes and send data
     }
-    
 
 close:
     // closing connections
@@ -157,7 +165,7 @@ done:
     return retval;
 }
 
-void *handle_new_player(void *arg)
+static void *handle_new_player(void *arg)
 {
     thread_data_t     *info = (thread_data_t *)arg;
     struct sockaddr_in player_addr;
@@ -204,18 +212,49 @@ void *handle_new_player(void *arg)
     return NULL;
 }
 
-static void receive_input(input_t inputs[], int connected_players, int sockfd)
+static int receive_input(input_t inputs[], int sockfd)
 {
-    int players_moved = 0;
-    time_t start;
-    time_t end;
-    time(&start);
-    end = start + GAME_TIMER;
-    while(start <= end && players_moved++ < connected_players && !exit_flag )
+    fd_set readfds;
+    struct timeval timeout;
+    int connected_players = 0;
+    int activity;
+    uint8_t buf[2]; // id, input
+
+    timeout.tv_sec = LISTEN_TIMEOUT;
+    timeout.tv_usec = 0;
+
+    while(1)
     {
-        uint8_t buf[]; // TODO fill this
-        recv(sockfd, &buf, COORDS_BUF_LEN);
+        int activity;
+        FD_ZERO(&readfds);
+        FD_SET(sockfd, &readfds);
+
+        activity = select(sockfd + 1, &readfds, NULL, NULL, &timeout);
+        if(activity < 0)
+        {
+            perror("select");
+            break;
+        }
+        else if(activity == 0) // Timeout
+        {
+            break;
+        }
+        
+        if(FD_ISSET(sockfd, &readfds))
+        {
+            memset(buf, 0, 2);
+            if(recv(sockfd, buf, 2, 0) < 0)
+            {
+                perror("recv error");
+                break;
+            }
+            inputs[connected_players].set = 1;
+            inputs[connected_players].id = buf[0];
+            inputs[connected_players].input = buf[1];
+            connected_players++;
+        }
     }
+    return connected_players;
 }
 
 /* Pairs SIGINT with sig_handler */

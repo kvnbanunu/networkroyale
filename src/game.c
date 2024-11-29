@@ -18,9 +18,11 @@ const class_t class_list[] = {
     {ASSASSIN,  8,  3,  0,   2,  50, 100}
 };
 
-void add_event(event_t *list, event_t *event)
+static void add_event(event_t *list, event_t *event)
 {
     event_t curr = *list;
+    
+    // This would be the first event
     if (curr == NULL)
     {
         *list = *event;
@@ -33,7 +35,7 @@ void add_event(event_t *list, event_t *event)
     curr->next = *event;
 }
 
-void clear_events(event_t *list)
+static void clear_events(event_t *list)
 {
     event_t curr = *list;
     event_t to_del = NULL;
@@ -46,12 +48,13 @@ void clear_events(event_t *list)
     free(curr);
 }
 
-void init_event(event_t *event, uint8_t actor, uint8_t target, uint8_t dmg, uint8_t dodge, uint8_t death, uint8_t skill, uint8_t jobadv)
+static void init_event(event_t *event, uint8_t actor, uint8_t target, uint8_t dmg, uint8_t dodge, uint8_t death, uint8_t skill, uint8_t jobadv)
 {
     (*event)->actor = actor;
     (*event)->target = target;
     (*event)->dmg = dmg;
-    (*event)->dodge = death;
+    (*event)->dodge = dodge;
+    (*event)->death = death;
     (*event)->skill_use = skill;
     (*event)->jobadv = jobadv;
     (*event)->next = NULL;
@@ -92,7 +95,7 @@ static uint8_t dmg_calc(class_t attacker, class_t defender, int a_skill, int d_s
     return (uint8_t)(result + attacker.dmg_mod - def_mod);
 }
 
-void combat(event_t *list, player_t *p1, player_t *p2)
+static void combat(event_t *list, player_t *p1, player_t *p2, int *alive_players)
 {
     player_t *a = p1;
     player_t *d = p2;
@@ -123,6 +126,7 @@ void combat(event_t *list, player_t *p1, player_t *p2)
         d->is_alive = 0;
         d->hp = 0;
         a->exp++;
+        *alive_players--;
         return;
     }
     else
@@ -142,6 +146,7 @@ void combat(event_t *list, player_t *p1, player_t *p2)
             a->is_alive = 0;
             a->hp = 0;
             d->exp++;
+            *alive_players--;
             return;
         }
         a->hp -= dmg;
@@ -149,7 +154,7 @@ void combat(event_t *list, player_t *p1, player_t *p2)
 }
 
 
-void process_events(event_t *events, player_info_t *players, input_t *inputs)
+void process_events(event_t *events, player_info_t *players, input_t *inputs, int *alive_players)
 {
     for (int i = 0; i < MAX_PLAYERS; i++)
     {

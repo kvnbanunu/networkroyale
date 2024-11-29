@@ -22,6 +22,7 @@ typedef struct Class_Base
 
 typedef struct Client_Input
 {
+    uint8_t set;
     uint8_t id;
     uint8_t input;
 } input_t;
