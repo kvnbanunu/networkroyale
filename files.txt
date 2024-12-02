@@ -1,2 +1,2 @@
 server src/server.c src/setup.c include/setup.h pthread
-client src/client.c src/setup.c include/setup.h src/args.c include/args.h SDL2
+client src/client.c src/setup.c include/setup.h src/args.c include/args.h src/input_handle.c include/input_handle.h SDL2 ncurses unistd

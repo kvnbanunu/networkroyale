@@ -1,5 +1,5 @@
 #include "../include/args.h"
-// #include "../include/controller.h"
+#include "../include/input_handle.h"
 #include "../include/setup.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_error.h>
@@ -7,20 +7,27 @@
 #include <SDL2/SDL_gamecontroller.h>
 #include <SDL2/SDL_video.h>
 #include <arpa/inet.h>
+#include <ncurses.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <ncurses.h>
 #define NAME_LEN 5
 #define INFO_LEN 7
 #define GAME_START_LEN 17
+#define CON_UP 11
+#define CON_DOWN 12
+#define CON_LEFT 13
+#define CON_RIGHT 14
+#define KB_FIFO_PATH "kbfifo"
+#define CON_FIFO_PATH "confifo"
 
 int            check_controller(void);
-_Noreturn void read_controller_input(SDL_GameController *con);
-_Noreturn void read_keyboard_input(void);
+_Noreturn void read_controller_input(SDL_GameController *con, int fd);
+
 int main(int argc, char *argv[])
 {
     int                serverfd;
@@ -42,6 +49,11 @@ int main(int argc, char *argv[])
     socklen_t          addr_len = sizeof(struct sockaddr);
 
     int conflag;
+    int fd_write_kb;
+    int fd_write_con;
+
+    int fd_read_kb;
+    int fd_read_con;
 
     parse_args(argc, argv, &server_address_str, &server_port_str);
     handle_args(argv[0], server_address_str, server_port_str, &server_port);
@@ -69,6 +81,10 @@ int main(int argc, char *argv[])
     printf("%s", game_start_message);
     socket_close(serverfd);
 
+    // Create 2 FIFOs
+    fifo_fd_write_setup(&fd_write_kb, KB_FIFO_PATH);
+    fifo_fd_write_setup(&fd_write_con, CON_FIFO_PATH);
+
     // Must happen before any SDL related code
     if(SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) != 0)
     {
@@ -76,13 +92,32 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    // check the controller
     conflag = check_controller();
 
-    if(conflag == 1)
+    // fork the keyboard process
+    if(fork() == 0)
+    {
+        initscr();
+        read_keyboard_input(fd_write_kb);
+        close(fd_write_kb);
+        return 0;
+    }
+
+    // fork the controller process if a controller was found
+    if(conflag == 1 && fork() == 0)
     {
         SDL_GameController *con = SDL_GameControllerOpen(0);
-        read_controller_input(con);
+        read_controller_input(con, fd_write_con);
+        // close(fd_write_con);
+        // return 0;
     }
+
+    // Open keyboard and controller fifos
+    fifo_fd_read_setup(&fd_read_kb, KB_FIFO_PATH);
+    fifo_fd_read_setup(&fd_read_con, CON_FIFO_PATH);
+
+    poll_and_process_input(fd_read_kb, fd_read_con);
 
     // Start the game here
     retval = EXIT_SUCCESS;
@@ -98,6 +133,10 @@ int main(int argc, char *argv[])
      * render
      */
 
+    close(fd_read_con);
+    close(fd_read_kb);
+    unlink(KB_FIFO_PATH);
+    unlink(CON_FIFO_PATH);
     SDL_Quit();
     socket_close(udpfd);
     return retval;
@@ -119,9 +158,12 @@ int check_controller(void)
     return 1;
 }
 
-void read_controller_input(SDL_GameController *con)
+void read_controller_input(SDL_GameController *con, int fd)
 {
+    char      buf;
+    int       input;
     SDL_Event event;
+
     while(1)
     {
         while(SDL_PollEvent(&event))
@@ -134,92 +176,86 @@ void read_controller_input(SDL_GameController *con)
 
             if(event.type == SDL_CONTROLLERBUTTONDOWN)
             {
-                // send udp enum
-                printf("Controller button %d\n", event.cbutton.button);
+                input = event.cbutton.button;
+
+                switch(input)
+                {
+                    case 0:
+                        buf = ISKILL;
+                        write(fd, &buf, 1);
+                        break;
+                    case CON_UP:
+                        buf = IUP;
+                        write(fd, &buf, 1);
+                        break;
+                    case CON_DOWN:
+                        buf = IDOWN;
+                        write(fd, &buf, 1);
+                        break;
+                    case CON_LEFT:
+                        buf = ILEFT;
+                        write(fd, &buf, 1);
+                        break;
+                    case CON_RIGHT:
+                        buf = IRIGHT;
+                        write(fd, &buf, 1);
+                        break;
+                    default:
+                        break;
+                }
             }
         }
-
-        switch(getch())
-        {
-            case KEY_RIGHT:
-                printw("right\n");
-                refresh();
-                //send udp
-                break;
-            case KEY_LEFT:
-                printw("left\n");
-                refresh();
-                //send udp
-                break;
-            case KEY_UP:
-                printw("up\n");
-                refresh();
-                //send udp
-                break;
-            case KEY_DOWN:
-                printw("down\n");
-                refresh();
-                //send udp
-                break;
-            case ' ':
-                break;
-            case 'w':
-                break;
-            case 'a':
-                break;
-            case 's':
-                break;
-            case 'd':
-                break;
-
-        }
     }
 }
 
-
-void read_keyboard_input(void)
-{
-    initscr();
-    keypad(stdscr, TRUE);
-    noecho();
-    cbreak();
-    while(1)
-    {
-    
-        switch(getch())
-        {
-            case KEY_RIGHT:
-                printw("right\n");
-                refresh();
-                //send udp
-                break;
-            case KEY_LEFT:
-                printw("left\n");
-                refresh();
-                //send udp
-                break;
-            case KEY_UP:
-                printw("up\n");
-                refresh();
-                //send udp
-                break;
-            case KEY_DOWN:
-                printw("down\n");
-                refresh();
-                //send udp
-                break;
-            case ' ':
-                break;
-            case 'w':
-                break;
-            case 'a':
-                break;
-            case 's':
-                break;
-            case 'd':
-                break;
-        }
-        refresh();
-    }
-}
-
+// void read_keyboard_input(int fd)
+// {
+//     char buf;
+//     initscr();
+//     keypad(stdscr, TRUE);
+//     noecho();
+//     cbreak();
+//     while(1)
+//     {
+//         switch(getch())
+//         {
+//             case KEY_RIGHT:
+//                 printw("right\n");
+//                 buf = (char)IRIGHT;
+//                 write(fd, &buf, 1);
+//                 break;
+//             case KEY_LEFT:
+//                 printw("left\n");
+//                 refresh();
+//                 break;
+//             case KEY_UP:
+//                 printw("up\n");
+//                 refresh();
+//                 // send udp
+//                 break;
+//             case KEY_DOWN:
+//                 printw("down\n");
+//                 refresh();
+//                 // send udp
+//                 break;
+//             case ' ':
+//                 printw("space\n");
+//                 break;
+//             case 'w':
+//                 printw("w\n");
+//                 break;
+//             case 'a':
+//                 printw("a\n");
+//                 break;
+//             case 's':
+//                 printw("s\n");
+//                 break;
+//             case 'd':
+//                 printw("d\n");
+//                 break;
+//             default:
+//                 break;
+//         }
+//         refresh();
+//     }
+// }
