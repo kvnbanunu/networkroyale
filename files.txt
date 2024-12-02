@@ -1,1 +1,1 @@
-server src/server.c src/setup.c include/setup.h src/game.c include/game.h pthread
+server src/server.c src/setup.c src/game.c pthread

@@ -13,7 +13,7 @@
 
 typedef struct Class_Base
 {
-    int id;
+    int id;    // NOLINT(unusedStructMember)
     int hp;
     int atk;
     int dmg_mod;

@@ -177,6 +177,7 @@ game_start:
                     goto done;
                 case 0:
                     sendto(udpfd, outbound_buf, PACK_LEN, 0, (struct sockaddr *)&(thread_data.clients[i].addr), addr_len);
+                    break;
                 default:
                     continue;
             }
@@ -233,6 +234,7 @@ static void *handle_new_player(void *arg)
     info->fds[info->nfds].events = POLLIN;
     info->nfds++;
 
+    // TODO send playerid
     // send udp port
     write(playerfd, &info->udp_port, sizeof(in_port_t));
 
