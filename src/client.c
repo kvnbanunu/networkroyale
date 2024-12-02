@@ -62,8 +62,8 @@ int main(int argc, char *argv[])
 
     // Start the game here
 
-    socket_close(serverfd); // Not needed anymore
-    
+    socket_close(serverfd);    // Not needed anymore
+
     // TODO gameloop and udp
 
     retval = EXIT_SUCCESS;

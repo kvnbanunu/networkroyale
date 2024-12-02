@@ -1,27 +1,28 @@
-#include "../include/setup.h"
 #include "../include/game.h"
+#include "../include/setup.h"
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include <fcntl.h>
 
-#define MAP_BOUNDS 255 // Inclusive
+#define MAP_BOUNDS 255    // Inclusive
 #define INFO_LEN 10
 #define GAME_START_LEN 17
 #define LISTEN_TIMEOUT 5
-#define COORDS_BUF_LEN 128 // TODO set this to smt else
+#define INPUT_SIZE 6
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
@@ -42,19 +43,21 @@ typedef struct ThreadData
     in_port_t     udp_port;
 } thread_data_t;
 
-static void       *handle_new_player(void *arg);
-static void receive_input(input_t inputs[], int sockfd);
-static void fill_random_moves(input_t inputs[], player_t players[], int end);
-static void setup_signal_handler(void);
-static void sig_handler(int sig);
+static void *handle_new_player(void *arg);
+static void  receive_input(input_t inputs[], int sockfd);
+static void  fill_random_moves(input_t inputs[], player_t players[], int end);
+static void  setup_signal_handler(void);
+static void  sig_handler(int sig);
 
 int main(void)
 {
     int                udpfd;
-    int                retval = EXIT_FAILURE;
-    int alive_players = MAX_PLAYERS;
-    int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]; // This will hold player ids offset by 1
+    int                retval        = EXIT_FAILURE;
+    int                alive_players = MAX_PLAYERS;
+    int                game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1];    // This will hold player ids offset by 1
     char               address_str[INET_ADDRSTRLEN];
+    uint8_t            outbound_buf[PACK_LEN];
+    uint32_t           seed;
     const char        *game_start_message = "Game starting...\n";
     struct sockaddr_in tcp_addr;
     struct sockaddr_in udp_addr;
@@ -63,10 +66,14 @@ int main(void)
     socklen_t          addr_len = sizeof(struct sockaddr);
     thread_data_t      thread_data;
     pthread_t          thread;
-    event_t event_head;
-    input_t inputs[MAX_PLAYERS];
+    event_t            event_head;
+    input_t            inputs[MAX_PLAYERS];
+    pid_t              pid;
 
     setup_signal_handler();
+
+    seed = (uint32_t)time(NULL);
+    srand(seed);
 
     // Get the first IPv4 address of this system that matches 192.168.*.*
     findaddress(&address, address_str);
@@ -139,33 +146,46 @@ int main(void)
         }
     }
 game_start:
-    socket_close(thread_data.serverfd);
-    thread_data.serverfd = 0;
-    srand(time(0)); // SEED ONLY ONCE
-
-    init_positions(thread_data.players, MAX_PLAYERS, MAP_BOUNDS, (int*)game_map);
-
-    while(!exit_flag && alive_players > 1)
-    {
-        memset(inputs, 0, MAX_PLAYERS);
-        event_head = NULL;
-        
-        receive_input(inputs, udpfd);
-        fill_random_moves(inputs, thread_data.players, MAX_PLAYERS);
-        active_players -= process_inputs(&event_head, thread_data.players, inputs, MAP_BOUNDS, (int*)game_map);
-        // TODO
-        // process_events(&event_head, inputs);
-        // spawn processes and send data
-    }
-
-close:
     // closing connections
     for(int i = 0; i < thread_data.player_count; i++)
     {
         write(thread_data.clients[i].socket, game_start_message, GAME_START_LEN);
         close(thread_data.clients[i].socket);
     }
-    retval = EXIT_SUCCESS;
+
+    socket_close(thread_data.serverfd);
+    thread_data.serverfd = 0;
+
+    init_positions(thread_data.players, MAX_PLAYERS, game_map);
+
+    while(!exit_flag && alive_players > 1)
+    {
+        memset(inputs, 0, MAX_PLAYERS * sizeof(input_t));
+        event_head = NULL;
+
+        receive_input(inputs, udpfd);
+        fill_random_moves(inputs, thread_data.players, MAX_PLAYERS);
+        alive_players -= process_inputs(&event_head, thread_data.players, inputs, game_map);
+        serialize(outbound_buf, thread_data.players, MAX_PLAYERS, &event_head);
+        for(int i = 0; i < thread_data.player_count; i++)
+        {
+            pid = fork();
+            switch(pid)
+            {
+                case -1:
+                    fprintf(stderr, "Error Forking for player: %d\n", i);
+                    goto done;
+                case 0:
+                    sendto(udpfd, outbound_buf, PACK_LEN, 0, (struct sockaddr *)&(thread_data.clients[i].addr), addr_len);
+                default:
+                    continue;
+            }
+        }
+    }
+    if(alive_players == 1)
+    {
+        retval = EXIT_SUCCESS;
+    }
 
 done:
     socket_close(udpfd);
@@ -174,8 +194,8 @@ done:
 
 static void *handle_new_player(void *arg)
 {
-    thread_data_t     *info = (thread_data_t *)arg;
-    int count = info->player_count;
+    thread_data_t     *info  = (thread_data_t *)arg;
+    int                count = info->player_count;
     struct sockaddr_in player_addr;
     socklen_t          addr_len;
     int                playerfd;
@@ -200,12 +220,12 @@ static void *handle_new_player(void *arg)
     read(playerfd, buf, INFO_LEN);
     memcpy(player->username, buf, NAME_LEN);
     memcpy(&player_port, &buf[NAME_LEN], sizeof(in_port_t));
-    player->id     = count;
+    player->id                  = (uint8_t)count;
     info->clients[count].socket = playerfd;
 
     getnameinfo((struct sockaddr *)&player_addr, addr_len, client_host, NI_MAXHOST, NULL, 0, 0);
 
-    info->clients[count].addr = player_addr;
+    info->clients[count].addr          = player_addr;
     info->clients[count].addr.sin_port = player_port;
 
     // add player socket to poll
@@ -222,12 +242,11 @@ static void *handle_new_player(void *arg)
 
 static void receive_input(input_t inputs[], int sockfd)
 {
-    fd_set readfds;
+    fd_set         readfds;
     struct timeval timeout;
-    int activity;
-    uint8_t buf[2]; // id, input
+    uint8_t        buf[INPUT_SIZE];    // id, input
 
-    timeout.tv_sec = LISTEN_TIMEOUT;
+    timeout.tv_sec  = LISTEN_TIMEOUT;
     timeout.tv_usec = 0;
 
     while(1)
@@ -242,21 +261,29 @@ static void receive_input(input_t inputs[], int sockfd)
             perror("select");
             break;
         }
-        else if(activity == 0) // Timeout
+        if(activity == 0)    // Timeout
         {
             break;
         }
-        
+
         if(FD_ISSET(sockfd, &readfds))
         {
-            memset(buf, 0, 2);
-            if(recv(sockfd, buf, 2, 0) < 0)
+            uint16_t id;
+            uint16_t meta;
+            uint32_t net_input;
+            uint32_t input;
+            memset(buf, 0, INPUT_SIZE);
+            if(recv(sockfd, buf, INPUT_SIZE, 0) < 0)
             {
                 perror("recv error");
                 break;
             }
-            inputs[buf[0]].meta = 1;
-            inputs[buf[0]].input = buf[1];
+            memcpy(&meta, buf, sizeof(uint16_t));
+            memcpy(&net_input, &buf[2], sizeof(uint32_t));
+            id               = ntohs(meta);
+            input            = ntohl(net_input);
+            inputs[id].meta  = 1;
+            inputs[id].input = (input_e)input;
         }
     }
 }
@@ -267,8 +294,8 @@ static void fill_random_moves(input_t inputs[], player_t players[], int end)
     {
         if(inputs[i].meta == 0 && players[i].is_alive)
         {
-            inputs[i].meta = 1;
-            inputs[i].input = rand()%3; // Movement only
+            inputs[i].meta  = 1;
+            inputs[i].input = (input_e)(rand() % 3);    // Movement only
         }
     }
 }

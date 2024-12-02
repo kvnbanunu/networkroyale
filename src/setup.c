@@ -66,14 +66,14 @@ in_port_t setup_and_bind(int *sockfd, struct sockaddr_in *addr, in_addr_t addres
     if(flag != 0)
     {
         int flags = fcntl(*sockfd, F_GETFL, 0);
-        if (flags < 0)
+        if(flags < 0)
         {
             perror("fcntl(F_GETFL)");
             close(*sockfd);
             exit(EXIT_FAILURE);
         }
 
-        if(fcntl(sockfd, F_SETFL, flags | flag) < 0)
+        if(fcntl(*sockfd, F_SETFL, flags | flag) < 0)
         {
             perror("fcntl(F_GETFL)");
             close(*sockfd);

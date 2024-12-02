@@ -8,6 +8,8 @@
 #define NUM_CLASSES 9
 #define MAX_PLAYERS 25
 #define NAME_LEN 8
+#define PACK_LEN 508
+#define MAP_BOUNDS 255    // inclusive
 
 typedef struct Class_Base
 {
@@ -21,49 +23,49 @@ typedef struct Class_Base
     int skill_duration;
 } class_t;
 
-enum INPUTS
+typedef enum INPUTS
 {
     INPUT_UP,
     INPUT_DOWN,
     INPUT_LEFT,
     INPUT_RIGHT,
     INPUT_SKILL
-};
+} input_e;
 
 typedef struct Client_Input
 {
-    uint8_t meta;
-    enum INPUTS input;
+    uint16_t meta;
+    input_e  input;
 } input_t;
 
 typedef struct Coordinate
 {
-    uint8_t x;
-    uint8_t y;
+    uint16_t x;
+    uint16_t y;
 } coord_t;
 
-typedef struct Player // 18 bytes
+typedef struct Player
 {
-    uint8_t id;
-    uint8_t is_alive;
-    uint8_t class_type;
-    uint8_t has_skill;
-    uint8_t active_skill;
-    uint8_t hp;
-    uint8_t exp;
+    int     id;
+    int     is_alive;
+    int     class_type;
+    int     has_skill;
+    int     active_skill;
+    int     hp;
+    int     exp;
     coord_t pos;
-    uint8_t username[NAME_LEN]; // 8 bytes
+    uint8_t username[NAME_LEN];
 } player_t;
 
 typedef struct Event_Node
 {
-    uint8_t actor;
-    uint8_t target;
-    uint8_t dmg;
-    uint8_t dodge;
-    uint8_t death;
-    uint8_t skill_use;
-    uint8_t jobadv;
+    uint16_t           actor;
+    uint16_t           target;
+    uint16_t           dmg;
+    uint16_t           dodge;
+    uint16_t           death;
+    uint16_t           skill_use;
+    uint16_t           jobadv;
     struct Event_Node *next;
 } *event_t;
 
@@ -80,15 +82,8 @@ enum Class_ID
     ASSASSIN
 };
 
-/*
-void send_position();
-void receive_position();
-void check_inbound();
-void check_collision();
-void battle();
-*/
+void init_positions(player_t players[], int num_players, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
+int  process_inputs(event_t *events, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
+void serialize(uint8_t buf[], player_t players[], int player_count, event_t *events);
 
-void init_positions(player_t players[], int num_players, int outerbound, int *game_map);
-int process_inputs(event_t *events, player_t players[], input_t inputs[], int outerbound, int *game_map);
-
-#endif // GAME_H
+#endif    // GAME_H
