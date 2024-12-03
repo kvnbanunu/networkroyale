@@ -143,6 +143,7 @@ int main(int argc, char *argv[])
     unlink(KB_FIFO_PATH);
     unlink(CON_FIFO_PATH);
     SDL_Quit();
+  
     socket_close(udpfd);
     return retval;
 }

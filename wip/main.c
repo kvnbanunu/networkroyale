@@ -1,52 +1,28 @@
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <limits.h>
-#include <netdb.h>
-#include <netinet/in.h>
+#include "../include/game.h"
+
+#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <time.h>
 
-#define PREFIX "192.168"
-
-void getaddress(char **address)
+int main(void)
 {
-    struct ifaddrs       *ifaddr;
-    const struct ifaddrs *ifa;
-    char                  host[INET_ADDRSTRLEN];
+    srand(time(0));
+    const class_t class_list[] = {
+        // NPC     hp  atk dmg  def  eva   cr
+        {MOB,       5,  3,  2,   1,   0,   5},
+        // Starting classes
+        {CLERIC,   20,  6,  4,   4,   0,   5},
+        {FIGHTER,  15,  6,  3,   3,   0,   5},
+        {MAGE,     10,  6,  6,   1,   0,   5},
+        {ROGUE,    10,  3,  4,   1,  25,  50},
+        // Promoted classes
+        {PALADIN,  30,  4,  0,   8,   0,  10},
+        {KNIGHT,   16,  5,  0,   3,   0,  10},
+        {WIZARD,   10, 20,  0,   5,   0,  10},
+        {ASSASSIN,  8,  3,  0,   2,  50, 100}
+    };
 
-    if(getifaddrs(&ifaddr) == -1)
-    {
-        perror("getifaddrs");
-        exit(EXIT_FAILURE);
-    }
 
-    for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
-    {
-        if(ifa->ifa_addr == NULL)
-        {
-            continue;
-        }
 
-        if(ifa->ifa_addr->sa_family == AF_INET)
-        {
-            if(getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host, INET_ADDRSTRLEN, NULL, 0, NI_NUMERICHOST) != 0)
-            {
-                perror("getnameinfo");
-                continue;
-            }
-            if(strncmp(host, PREFIX, strlen(PREFIX)) == 0)
-            {
-                printf("IP: %s\n", host);
-                break;
-            }
-        }
-    }
-    freeifaddrs(ifaddr);
-
-    *address = host;
+    return 0;
 }
