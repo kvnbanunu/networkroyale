@@ -13,7 +13,7 @@
 
 typedef struct Class_Base
 {
-    int id;    // NOLINT(unusedStructMember)
+    int id;
     int hp;
     int atk;
     int dmg_mod;
@@ -67,7 +67,7 @@ typedef struct Event_Node
     uint16_t           skill_use;
     uint16_t           jobadv;
     struct Event_Node *next;
-} *event_t;
+} event_t;
 
 enum Class_ID
 {
@@ -83,7 +83,8 @@ enum Class_ID
 };
 
 void init_positions(player_t players[], int num_players, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
-int  process_inputs(event_t *events, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
-void serialize(uint8_t buf[], player_t players[], int player_count, event_t *events);
+int  process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
+void serialize(uint8_t buf[], player_t players[], int player_count, event_t **event_head);
+const class_t *get_class_data(int class_type);
 
 #endif    // GAME_H

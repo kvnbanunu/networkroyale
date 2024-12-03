@@ -22,33 +22,30 @@ static const class_t class_list[] = {
     {ASSASSIN, 8,  3,  0, 2, 50, 100, 10}
 };
 
-static void add_event(event_t *list, event_t *event)
+static void add_event(event_t **event_head, uint16_t actor, uint16_t target, uint16_t dmg, uint16_t dodge, uint16_t death, uint16_t skill, uint16_t jobadv)
 {
-    event_t curr = *list;
-
-    // This would be the first event
-    if(curr == NULL)
+    event_t *curr  = *event_head;
+    event_t *new_e = NULL;
+    new_e          = (event_t *)malloc(sizeof(event_t));
+    if(new_e == NULL)
     {
-        *list = *event;
-        return;
+        perror("malloc add_event");
+        exit(EXIT_FAILURE);
     }
+    new_e->actor     = actor;
+    new_e->target    = target;
+    new_e->dmg       = dmg;
+    new_e->dodge     = dodge;
+    new_e->death     = death;
+    new_e->skill_use = skill;
+    new_e->jobadv    = jobadv;
+    new_e->next      = NULL;
+
     while(curr->next != NULL)
     {
         curr = curr->next;
     }
-    curr->next = *event;
-}
-
-static void init_event(event_t *event, uint16_t actor, uint16_t target, uint16_t dmg, uint16_t dodge, uint16_t death, uint16_t skill, uint16_t jobadv)
-{
-    (*event)->actor     = actor;
-    (*event)->target    = target;
-    (*event)->dmg       = dmg;
-    (*event)->dodge     = dodge;
-    (*event)->death     = death;
-    (*event)->skill_use = skill;
-    (*event)->jobadv    = jobadv;
-    (*event)->next      = NULL;
+    curr->next = new_e;
 }
 
 // Returns the damage c1 deals to c2, 0 == dodge
@@ -87,12 +84,11 @@ static int dmg_calc(class_t attacker, class_t defender, int a_skill, int d_skill
 }
 
 // Returns the amount of players slain this combat turn
-static int combat(event_t *list, player_t *p1, player_t *p2)
+static int combat(event_t **event_head, player_t *p1, player_t *p2)
 {
     player_t *a = p1;
     player_t *d = p2;
     int       dmg;
-    event_t   event;
     uint16_t  dodge_flag = 0;
     int       num_slain  = 0;
 
@@ -103,15 +99,11 @@ static int combat(event_t *list, player_t *p1, player_t *p2)
         d = p1;
     }
     dmg        = dmg_calc(class_list[a->class_type], class_list[d->class_type], a->active_skill, d->active_skill);
-    event      = (event_t)malloc(sizeof(struct Event_Node));
     dodge_flag = (dmg == 0) ? 1 : 0;
-    init_event(&event, (uint16_t)(a->id), (uint16_t)(d->id), (uint16_t)dmg, dodge_flag, 0, 0, 0);
-    add_event(list, &event);
+    add_event(event_head, (uint16_t)(a->id), (uint16_t)(d->id), (uint16_t)dmg, dodge_flag, 0, 0, 0);
     if(d->hp - dmg <= 0)    // defender dies
     {
-        event_t death = (event_t)malloc(sizeof(struct Event_Node));
-        init_event(&death, (uint16_t)(d->id), (uint16_t)(a->id), 0, 0, 1, 0, 0);
-        add_event(list, &death);
+        add_event(event_head, (uint16_t)(d->id), (uint16_t)(a->id), 0, 0, 1, 0, 0);
         d->is_alive = 0;
         d->hp       = 0;
         a->exp++;
@@ -120,17 +112,13 @@ static int combat(event_t *list, player_t *p1, player_t *p2)
     else
     {
         // Defenders turn to deal damage
-        event_t atk2 = (event_t)malloc(sizeof(struct Event_Node));
         d->hp -= dmg;
         dmg        = dmg_calc(class_list[d->class_type], class_list[a->class_type], d->active_skill, a->active_skill);
         dodge_flag = (dmg == 0) ? 1 : 0;
-        init_event(&atk2, (uint16_t)(d->id), (uint16_t)(a->id), (uint16_t)dmg, dodge_flag, 0, 0, 0);
-        add_event(list, &atk2);
+        add_event(event_head, (uint16_t)(d->id), (uint16_t)(a->id), (uint16_t)dmg, dodge_flag, 0, 0, 0);
         if(a->hp - dmg <= 0)    // attacker dies
         {
-            event_t death = (event_t)malloc(sizeof(struct Event_Node));
-            init_event(&death, (uint16_t)(a->id), (uint16_t)(d->id), 0, 0, 1, 0, 0);
-            add_event(list, &death);
+            add_event(event_head, (uint16_t)(a->id), (uint16_t)(d->id), 0, 0, 1, 0, 0);
             a->is_alive = 0;
             a->hp       = 0;
             d->exp++;
@@ -141,94 +129,56 @@ static int combat(event_t *list, player_t *p1, player_t *p2)
     return num_slain;
 }
 
-static int check_inbounds(coord_t coord, enum INPUTS input)
+static int check_inbounds(coord_t coord, int input)
 {
     int inbound = 1;
 
-    // Build system disallows enum + switch statement
-    //    switch(input)
-    //    {
-    //        case INPUT_UP:
-    //            inbound = (coord.y - 1 >= 0);
-    //            break;
-    //        case INPUT_DOWN:
-    //            inbound = (coord.y + 1 <= MAP_BOUNDS);
-    //            break;
-    //        case INPUT_LEFT:
-    //            inbound = (coord.x - 1 >= 0);
-    //            break;
-    //        case INPUT_RIGHT:
-    //            inbound = (coord.x + 1 <= MAP_BOUNDS);
-    //            break;
-    //        default:
-    //            inbound = 1;
-    //    }
-
-    if(input == INPUT_UP)
+    switch(input)
     {
-        inbound = (coord.y - 1 >= 0);
-    }
-    if(input == INPUT_DOWN)
-    {
-        inbound = (coord.y + 1 <= MAP_BOUNDS);
-    }
-    if(input == INPUT_LEFT)
-    {
-        inbound = (coord.x - 1 >= 0);
-    }
-    if(input == INPUT_RIGHT)
-    {
-        inbound = (coord.x + 1 <= MAP_BOUNDS);
+        case INPUT_UP:
+            inbound = (coord.y - 1 >= 0);
+            break;
+        case INPUT_DOWN:
+            inbound = (coord.y + 1 <= MAP_BOUNDS);
+            break;
+        case INPUT_LEFT:
+            inbound = (coord.x - 1 >= 0);
+            break;
+        case INPUT_RIGHT:
+            inbound = (coord.x + 1 <= MAP_BOUNDS);
+            break;
+        default:
+            break;
     }
 
     return inbound;
 }
 
 // If the (coord + input) on the map has a player on it, return the id(+1) or 0
-static int check_collision(coord_t coord, enum INPUTS input, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+static int check_collision(coord_t coord, int input, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
 {
-    int collision = 0;
-    int x         = (int)coord.x;
-    int y         = (int)coord.y;
+    int collision;
+    int x = (int)coord.x;
+    int y = (int)coord.y;
 
-    // Build system disallows enum + switch statement
-    //    switch(input)
-    //    {
-    //        case INPUT_UP:
-    //            collision = game_map[x][y - 1];
-    //            break;
-    //        case INPUT_DOWN:
-    //            collision = game_map[x][y + 1];
-    //            break;
-    //        case INPUT_LEFT:
-    //            collision = game_map[x - 1][y];
-    //            break;
-    //        case INPUT_RIGHT:
-    //            collision = game_map[x + 1][y];
-    //            break;
-    //        case INPUT_SKILL:
-    //            collision = 0;
-    //            break;
-    //        default:
-    //            assert(0 && "Unhandled enum constant");
-    //    }
+    switch(input)
+    {
+        case INPUT_UP:
+            collision = game_map[x][y - 1];
+            break;
+        case INPUT_DOWN:
+            collision = game_map[x][y + 1];
+            break;
+        case INPUT_LEFT:
+            collision = game_map[x - 1][y];
+            break;
+        case INPUT_RIGHT:
+            collision = game_map[x + 1][y];
+            break;
+        default:
+            collision = 0;
+    }
 
-    if(input == INPUT_UP)
-    {
-        collision = game_map[x][y - 1];
-    }
-    if(input == INPUT_DOWN)
-    {
-        collision = game_map[x][y + 1];
-    }
-    if(input == INPUT_LEFT)
-    {
-        collision = game_map[x - 1][y];
-    }
-    if(input == INPUT_RIGHT)
-    {
-        collision = game_map[x + 1][y];
-    }
     return collision;
 }
 
@@ -251,7 +201,7 @@ void init_positions(player_t players[], int num_players, int game_map[MAP_BOUNDS
     }
 }
 
-static void move_player(player_t *player, enum INPUTS input, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+static void move_player(player_t *player, int input, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
 {
     if(input == INPUT_SKILL)
     {
@@ -261,42 +211,22 @@ static void move_player(player_t *player, enum INPUTS input, int game_map[MAP_BO
     // clear the original position on game_map
     game_map[player->pos.x][player->pos.y] = 0;
 
-    // Build system disallows enum with switch statement
-    //    switch(input)
-    //    {
-    //        case INPUT_UP:
-    //            player->pos.y--;
-    //            break;
-    //        case INPUT_DOWN:
-    //            player->pos.y++;
-    //            break;
-    //        case INPUT_LEFT:
-    //            player->pos.x--;
-    //            break;
-    //        case INPUT_RIGHT:
-    //            player->pos.x++;
-    //            break;
-    //        case INPUT_SKILL:
-    //            break;
-    //        default:
-    //            assert(0 && "Unhandled enum constant");
-    //    }
-
-    if(input == INPUT_UP)
+    switch(input)
     {
-        player->pos.y--;
-    }
-    if(input == INPUT_DOWN)
-    {
-        player->pos.y++;
-    }
-    if(input == INPUT_LEFT)
-    {
-        player->pos.x--;
-    }
-    if(input == INPUT_RIGHT)
-    {
-        player->pos.x++;
+        case INPUT_UP:
+            player->pos.y--;
+            break;
+        case INPUT_DOWN:
+            player->pos.y++;
+            break;
+        case INPUT_LEFT:
+            player->pos.x--;
+            break;
+        case INPUT_RIGHT:
+            player->pos.x++;
+            break;
+        default:
+            break;
     }
 
     // update position on the map
@@ -318,9 +248,8 @@ static void teleport(player_t *player, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS +
     game_map[x][y] = player->id + 1;
 }
 
-static void activate_skill(event_t *events, player_t *player, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+static void activate_skill(event_t **event_head, player_t *player, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
 {
-    event_t event;
     if(!(player->has_skill) || player->active_skill)
     {
         return;
@@ -336,18 +265,10 @@ static void activate_skill(event_t *events, player_t *player, int game_map[MAP_B
     {
         teleport(player, game_map);
     }
-
-    event = (event_t)malloc(sizeof(struct Event_Node));
-    if(event == NULL)
-    {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
-    init_event(&event, (uint16_t)(player->id), 0, 0, 0, 0, 1, 0);
-    add_event(events, &event);
+    add_event(event_head, (uint16_t)(player->id), 0, 0, 0, 0, 1, 0);
 }
 
-int process_inputs(event_t *events, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+int process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
 {
     int slain = 0;
     for(int i = 0; i < MAX_PLAYERS; i++)
@@ -356,21 +277,21 @@ int process_inputs(event_t *events, player_t players[], input_t inputs[], int ga
         int            collision;
         if(inputs[i].input == INPUT_SKILL)
         {
-            activate_skill(events, &players[i], game_map);
+            activate_skill(event_head, &players[i], game_map);
             continue;
         }
         pos = &players[i].pos;
-        if(!check_inbounds(*pos, inputs[i].input))
+        if(!check_inbounds(*pos, (int)(inputs[i].input)))
         {
             continue;    // can't move
         }
-        collision = check_collision(*pos, inputs[i].input, game_map);
+        collision = check_collision(*pos, (int)(inputs[i].input), game_map);
         if(!collision)
         {
-            move_player(&players[i], inputs[i].input, game_map);
+            move_player(&players[i], (int)(inputs[i].input), game_map);
             continue;
         }
-        slain += combat(events, &players[i], &players[collision - 1]);
+        slain += combat(event_head, &players[i], &players[collision - 1]);
         if(players[i].active_skill > 0)
         {
             players[i].active_skill--;
@@ -379,10 +300,10 @@ int process_inputs(event_t *events, player_t players[], input_t inputs[], int ga
     return slain;
 }
 
-static int serialize_event(uint8_t buf[], event_t *event, int dest)
+static int serialize_event(uint8_t buf[], event_t **event, int dest)
 {
-    event_t e    = *event;
-    int     flag = htons(e->actor);
+    const event_t *e    = *event;
+    int            flag = htons(e->actor);
     memcpy(&buf[dest], &flag, 2);
     dest += 2;
     flag = htons(e->target);
@@ -405,11 +326,11 @@ static int serialize_event(uint8_t buf[], event_t *event, int dest)
     return dest + 2;
 }
 
-void serialize(uint8_t buf[], player_t players[], int player_count, event_t *events)
+void serialize(uint8_t buf[], player_t players[], int player_count, event_t **event_head)
 {
-    event_t curr = *events;
-    event_t temp;
-    int     dest = 0;
+    event_t *curr = (*event_head)->next;
+    event_t *temp;
+    int      dest = 0;
     memset(buf, '\0', PACK_LEN);
 
     // copy the coordinates
@@ -424,14 +345,19 @@ void serialize(uint8_t buf[], player_t players[], int player_count, event_t *eve
     }
 
     // pack the events
-    while(curr->next != NULL)
+    while(curr != NULL)
     {
         temp = curr;
         curr = curr->next;
         dest = serialize_event(buf, &temp, dest);
         free(temp);
     }
-    // last one
-    serialize_event(buf, &curr, dest);
-    free(curr);
+
+    (*event_head)->next = NULL;
+}
+
+const class_t *get_class_data(int class_type)
+{
+    const class_t *result = &(class_list[class_type]);
+    return result;
 }

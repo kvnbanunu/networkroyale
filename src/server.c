@@ -19,10 +19,10 @@
 #include <unistd.h>
 
 #define MAP_BOUNDS 255    // Inclusive
-#define INFO_LEN 10
-#define GAME_START_LEN 17
+#define INFO_LEN 14
 #define LISTEN_TIMEOUT 5
 #define INPUT_SIZE 6
+#define INIT_BOARD_BUF_LEN 400
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
@@ -44,6 +44,8 @@ typedef struct ThreadData
 } thread_data_t;
 
 static void *handle_new_player(void *arg);
+static void  init_mobs(thread_data_t *data);
+static void  send_initial_board(thread_data_t *data);
 static void  receive_input(input_t inputs[], int sockfd);
 static void  fill_random_moves(input_t inputs[], player_t players[], int end);
 static void  setup_signal_handler(void);
@@ -58,7 +60,6 @@ int main(void)
     char               address_str[INET_ADDRSTRLEN];
     uint8_t            outbound_buf[PACK_LEN];
     uint32_t           seed;
-    const char        *game_start_message = "Game starting...\n";
     struct sockaddr_in tcp_addr;
     struct sockaddr_in udp_addr;
     in_addr_t          address;
@@ -66,9 +67,9 @@ int main(void)
     socklen_t          addr_len = sizeof(struct sockaddr);
     thread_data_t      thread_data;
     pthread_t          thread;
-    event_t            event_head;
     input_t            inputs[MAX_PLAYERS];
     pid_t              pid;
+    event_t           *event_head = NULL;
 
     setup_signal_handler();
 
@@ -138,7 +139,8 @@ int main(void)
                     }
                     if(input)
                     {
-                        write(STDOUT_FILENO, game_start_message, GAME_START_LEN);
+                        const char *start_message = "Game starting...\n";
+                        write(STDOUT_FILENO, start_message, strlen(start_message));
                         goto game_start;
                     }
                 }
@@ -146,23 +148,28 @@ int main(void)
         }
     }
 game_start:
-    // closing connections
-    for(int i = 0; i < thread_data.player_count; i++)
+    // Send clients the initial state of the game and close all tcp sockets
+    init_mobs(&thread_data);
+    init_positions(thread_data.players, MAX_PLAYERS, game_map);
+    send_initial_board(&thread_data);
+    for(int i = 0; i <= thread_data.player_count; i++)
     {
-        write(thread_data.clients[i].socket, game_start_message, GAME_START_LEN);
         close(thread_data.clients[i].socket);
     }
-
     socket_close(thread_data.serverfd);
-    thread_data.serverfd = 0;
+    thread_data.serverfd = -1;
 
-    init_positions(thread_data.players, MAX_PLAYERS, game_map);
+    event_head = (event_t *)malloc(sizeof(event_t));
+    if(event_head == NULL)
+    {
+        perror("malloc event_head");
+        goto done;
+    }
+    event_head->next = NULL;
 
     while(!exit_flag && alive_players > 1)
     {
         memset(inputs, 0, MAX_PLAYERS * sizeof(input_t));
-        event_head = NULL;
-
         receive_input(inputs, udpfd);
         fill_random_moves(inputs, thread_data.players, MAX_PLAYERS);
         alive_players -= process_inputs(&event_head, thread_data.players, inputs, game_map);
@@ -189,6 +196,7 @@ game_start:
     }
 
 done:
+    free(event_head);
     socket_close(udpfd);
     return retval;
 }
@@ -204,6 +212,10 @@ static void *handle_new_player(void *arg)
     in_port_t          player_port;
     char               client_host[NI_MAXHOST];
     player_t          *player = &(info->players[count]);
+    uint8_t            response[sizeof(in_port_t) * 2];    // will hold port and playerid (as short)
+    uint16_t           net_count;
+    uint32_t           net_class;
+    const class_t     *class_data = NULL;
 
     if(info->player_count >= MAX_PLAYERS)
     {
@@ -218,10 +230,21 @@ static void *handle_new_player(void *arg)
         perror("accept");
         pthread_exit(NULL);
     }
+    // PORT[2], CLASS[4], USERNAME[8]
     read(playerfd, buf, INFO_LEN);
-    memcpy(player->username, buf, NAME_LEN);
-    memcpy(&player_port, &buf[NAME_LEN], sizeof(in_port_t));
-    player->id                  = (uint8_t)count;
+
+    // Deserialize info from new client
+    memcpy(&net_class, buf, sizeof(uint32_t));
+    player->class_type = (int)(ntohl(net_class));
+    memcpy(&player_port, &buf[(int)sizeof(uint32_t)], sizeof(in_port_t));    // Keep port in network order
+    memset(player->username, '\0', NAME_LEN);
+    memcpy(player->username, &buf[INFO_LEN - NAME_LEN], NAME_LEN);
+
+    player->id       = (uint8_t)count;
+    player->is_alive = 1;
+
+    class_data                  = get_class_data((int)(ntohl(net_class)));
+    player->hp                  = class_data->hp;
     info->clients[count].socket = playerfd;
 
     getnameinfo((struct sockaddr *)&player_addr, addr_len, client_host, NI_MAXHOST, NULL, 0, 0);
@@ -234,12 +257,60 @@ static void *handle_new_player(void *arg)
     info->fds[info->nfds].events = POLLIN;
     info->nfds++;
 
-    // TODO send playerid
-    // send udp port
-    write(playerfd, &info->udp_port, sizeof(in_port_t));
+    // send udp port & player id
+    net_count = htons((uint16_t)count);
+    memset(response, '\0', sizeof(in_port_t) * 2);
+    memcpy(response, &(info->udp_port), sizeof(in_port_t));
+    memcpy(&response[sizeof(in_port_t)], &net_count, sizeof(uint16_t));
+    write(playerfd, &response, sizeof(in_port_t) * 2);
 
     printf("Player %s joined the lobby from %s:%d\n", info->players[count].username, client_host, ntohs(info->clients[count].addr.sin_port));
     return NULL;
+}
+
+// Set all non-player character settings to a mob class
+static void init_mobs(thread_data_t *data)
+{
+    const class_t *mob_class = get_class_data(MOB);
+    const char    *name      = "a Virus";
+    for(int i = data->player_count + 1; i < MAX_PLAYERS; i++)
+    {
+        player_t *mob   = &(data->players[i]);
+        mob->id         = i;
+        mob->is_alive   = 1;
+        mob->class_type = MOB;
+        mob->hp         = mob_class->hp;
+        memset(mob->username, '\0', NAME_LEN);
+        memcpy(mob->username, name, strlen(name));
+    }
+}
+
+static void send_initial_board(thread_data_t *data)
+{
+    uint8_t buf[INIT_BOARD_BUF_LEN];
+    int     dest = 0;
+    // Need to send class_types, position, and username;
+    for(int i = 0; i < MAX_PLAYERS; i++)
+    {
+        player_t p         = data->players[i];
+        uint32_t net_class = htonl((uint32_t)(p.class_type));
+        uint16_t x         = htons(p.pos.x);
+        uint16_t y         = htons(p.pos.y);
+        memcpy(&buf[dest], &net_class, sizeof(uint32_t));
+        dest += (int)(sizeof(uint32_t));
+        memcpy(&buf[dest], &x, sizeof(uint16_t));
+        dest += (int)(sizeof(uint16_t));
+        memcpy(&buf[dest], &y, sizeof(uint16_t));
+        dest += (int)(sizeof(uint16_t));
+        memcpy(&buf[dest], p.username, NAME_LEN);
+        dest += NAME_LEN;
+    }
+
+    // send the data to all players (player_count is 0 based)
+    for(int i = 0; i <= data->player_count; i++)
+    {
+        write(data->clients[i].socket, buf, INIT_BOARD_BUF_LEN);
+    }
 }
 
 static void receive_input(input_t inputs[], int sockfd)
