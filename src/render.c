@@ -4,7 +4,9 @@
 #include <stdlib.h>
 
 // aligns with class_list
-static const char sprite_list[] = {'v', 'C', 'F', 'M', 'R', 'P', 'K', 'W', 'A'};
+static const chtype sprite_list[] = {'v', 'C', 'F', 'M', 'R', 'P', 'K', 'W', 'A'};
+
+// static const char skill_list[NUM_CLASSES][] = {"", "Full Heal", "Double Hit", "Teleport", "Invisibility", "Full Heal", "Double Hit", "Teleport", "Invisibility"};
 
 void r_setup(WINDOW *windows[N_WINDOWS])
 {
@@ -55,10 +57,14 @@ void r_init(player_t players[MAX_PLAYERS], WINDOW *windows[N_WINDOWS], int playe
     player_t mc    = players[player];
     for(int i = 0; i < MAX_PLAYERS; i++)
     {
-        player_t p     = players[i];
-        int      color = (p.class_type != MOB) ? ENEMY_CHAR : NON_CHAR;
-        mvwaddch(main, p.pos.y + 1, p.pos.x + 1, p.class_type | COLOR_PAIR(color));
+        player_t p      = players[i];
+        int      color  = (p.class_type != MOB) ? ENEMY_CHAR : NON_CHAR;
+        chtype   sprite = sprite_list[p.class_type];
+        attron(COLOR_PAIR(color));
+        mvwaddch(main, p.pos.y + 1, p.pos.x + 1, sprite);
+        attroff(COLOR_PAIR(color));
     }
+
     // Set this client's sprite to the special one
     mvwaddch(main, mc.pos.y, mc.pos.x, '@' | COLOR_PAIR(PLAYER_CHAR));
     display_stats(&stats, mc);

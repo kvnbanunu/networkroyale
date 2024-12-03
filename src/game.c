@@ -1,4 +1,5 @@
 #include "../include/game.h"
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7,31 +8,31 @@
 #include <unistd.h>
 
 #define PERCENT 100
-#define MAX_BUF 220
+// #define MAX_BUF 220
 
 static const class_t class_list[] = {
     // ID | hp | atk | dmg | def | eva | cr | skill duration | skill_description
-    {MOB,      5,  3,  2, 1, 0,  5,   0 },
+    {MOB,      5,  3,  2, 1, 0,  5,   0,  ""            },
     // Starting classes
-    {CLERIC,   20, 6,  4, 4, 0,  5,   0 },
-    {FIGHTER,  15, 6,  3, 3, 0,  5,   5 },
-    {MAGE,     10, 6,  6, 1, 0,  5,   0 },
-    {ROGUE,    10, 3,  4, 1, 25, 50,  5 },
+    {CLERIC,   20, 6,  4, 4, 0,  5,   0,  "Full Heal"   },
+    {FIGHTER,  15, 6,  3, 3, 0,  5,   5,  "Double Hit"  },
+    {MAGE,     10, 6,  6, 1, 0,  5,   0,  "Teleport"    },
+    {ROGUE,    10, 3,  4, 1, 25, 50,  5,  "Invisibility"},
     // Promoted classes
-    {PALADIN,  30, 4,  0, 8, 0,  10,  0 },
-    {KNIGHT,   16, 5,  0, 3, 0,  10,  10},
-    {WIZARD,   10, 20, 0, 5, 0,  10,  0 },
-    {ASSASSIN, 8,  3,  0, 2, 50, 100, 10}
+    {PALADIN,  30, 4,  0, 8, 0,  10,  0,  "Full Heal"   },
+    {KNIGHT,   16, 5,  0, 3, 0,  10,  10, "Double Hit"  },
+    {WIZARD,   10, 20, 0, 5, 0,  10,  0,  "Teleport"    },
+    {ASSASSIN, 8,  3,  0, 2, 50, 100, 10, "Invisibility"}
 };
 
-static const char *skill_list[] = {"", "Full Heal", "Double Hit", "Teleport", "Invisibility", "Full Heal", "Double Hit", "Teleport", "Invisibility"};
+// static const char skill_list[NUM_CLASSES][] = {"", "Full Heal", "Double Hit", "Teleport", "Invisibility", "Full Heal", "Double Hit", "Teleport", "Invisibility"};
 
-static void clear_in(void)
+static void clear_stream(int stream)
 {
-    int stdin_copy = dup(STDIN_FILENO);
-    tcdrain(stdin_copy);
-    tcflush(stdin_copy, TCIFLUSH);
-    close(stdin_copy);
+    int copy = fcntl(stream, F_DUPFD_CLOEXEC);
+    tcdrain(copy);
+    tcflush(copy, TCIFLUSH);
+    close(copy);
 }
 
 void join_game(uint8_t player_info[INFO_LEN], in_port_t port)
@@ -42,21 +43,53 @@ void join_game(uint8_t player_info[INFO_LEN], in_port_t port)
     class_t     R        = class_list[ROGUE];
     const char *name_msg = "Enter a username(max 8):\n";
     char        hello[INFO_LEN + 2];
-    char        class_select[MAX_BUF + 1];
-    char        name[NAME_LEN];
-    char        class_in;
-    int         class_home = 0;
-    uint32_t    class_net;
+    //    char        class_select[MAX_BUF + 1];
+    char     name[NAME_LEN];
+    char     class_in;
+    int      class_home = 0;
+    uint32_t class_net;
 
     memset(name, '\0', NAME_LEN);
     write(STDOUT_FILENO, name_msg, strlen(name_msg));
     read(STDIN_FILENO, &name, NAME_LEN);
-    clear_in();
+    clear_stream(STDIN_FILENO);
     snprintf(hello, INFO_LEN + 2, "Hello %s\n", name);
     write(STDOUT_FILENO, hello, INFO_LEN + 1);
-    snprintf(
-        class_select,
-        MAX_BUF + 1,
+    //    snprintf(
+    //        class_select,
+    //        MAX_BUF + 1,
+    //        "Select a starting
+    //        class:\n\nClass:\t(1)Cleric\t(2)Fighter\t(3)Mage\t\t(4)Rogue\nHP:\t%d\t\t%d\t\t%d\t\t%d\nATK:\tD%d+%d\t\tD%d+%d\t\tD%d+%d\t\tD%d+%d\nDEF:\t%d\t\t%d\t\t%d\t\t%d\nEVA:\t%d\t\t%d\t\t%d\t\t%d\nCRIT:\t%d\t\t%d\t\t%d\t\t%d\nSkill:\t%s\t%s\t%s\t%s\n",
+    //        C.hp,
+    //        F.hp,
+    //        M.hp,
+    //        R.hp,
+    //        C.atk,
+    //        C.dmg_mod,
+    //        F.atk,
+    //        F.dmg_mod,
+    //        M.atk,
+    //        M.dmg_mod,
+    //        R.atk,
+    //        R.dmg_mod,
+    //        C.def,
+    //        F.def,
+    //        M.def,
+    //        R.def,
+    //        C.eva,
+    //        F.eva,
+    //        M.eva,
+    //        R.eva,
+    //        C.crit_rate,
+    //        F.crit_rate,
+    //        M.crit_rate,
+    //        R.crit_rate,
+    //        skill_list[CLERIC],
+    //        skill_list[FIGHTER],
+    //        skill_list[MAGE],
+    //        skill_list[ROGUE]);
+    //    write(STDOUT_FILENO, class_select, MAX_BUF);
+    printf(
         "Select a starting class:\n\nClass:\t(1)Cleric\t(2)Fighter\t(3)Mage\t\t(4)Rogue\nHP:\t%d\t\t%d\t\t%d\t\t%d\nATK:\tD%d+%d\t\tD%d+%d\t\tD%d+%d\t\tD%d+%d\nDEF:\t%d\t\t%d\t\t%d\t\t%d\nEVA:\t%d\t\t%d\t\t%d\t\t%d\nCRIT:\t%d\t\t%d\t\t%d\t\t%d\nSkill:\t%s\t%s\t%s\t%s\n",
         C.hp,
         F.hp,
@@ -82,21 +115,21 @@ void join_game(uint8_t player_info[INFO_LEN], in_port_t port)
         F.crit_rate,
         M.crit_rate,
         R.crit_rate,
-        skill_list[CLERIC],
-        skill_list[FIGHTER],
-        skill_list[MAGE],
-        skill_list[ROGUE]);
-    write(STDOUT_FILENO, class_select, MAX_BUF);
+        C.skill_description,
+        F.skill_description,
+        M.skill_description,
+        R.skill_description);
+    clear_stream(STDOUT_FILENO);
     read(STDIN_FILENO, &class_in, 1);
-    clear_in();
-    class_home = (int)(class_in - '0');
+    clear_stream(STDIN_FILENO);
+    class_home = (class_in - '0');
     while(class_home < 1 || class_home > NUM_STARTING_CLASSES)
     {
         const char *invalid = "Invalid selection. Try again:\n";
         write(STDOUT_FILENO, invalid, strlen(invalid));
         read(STDIN_FILENO, &class_in, 1);
-        clear_in();
-        class_home = (int)(class_in - '0');
+        clear_stream(STDIN_FILENO);
+        class_home = (class_in - '0');
     }
     // Serialize player_info[]
     memcpy(player_info, &port, sizeof(in_port_t));

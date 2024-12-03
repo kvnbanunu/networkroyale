@@ -13,6 +13,7 @@
 #define PACK_LEN 508
 #define MAP_BOUNDS 255    // inclusive
 #define INIT_BOARD_BUF_LEN 400
+#define SKILL_DESC_LEN 13
 
 typedef struct Class_Base
 {
@@ -24,6 +25,7 @@ typedef struct Class_Base
     int eva;
     int crit_rate;
     int skill_duration;
+    char skill_description[SKILL_DESC_LEN];
 } class_t;
 
 typedef enum INPUTS
