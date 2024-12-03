@@ -478,3 +478,5 @@ supported_cxx_compilers.txt
 CMakeLists.txt
 
 build/
+
+.vscode/
