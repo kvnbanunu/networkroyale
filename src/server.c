@@ -18,11 +18,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#define MAP_BOUNDS 255    // Inclusive
-#define INFO_LEN 14
 #define LISTEN_TIMEOUT 5
 #define INPUT_SIZE 6
-#define INIT_BOARD_BUF_LEN 400
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 

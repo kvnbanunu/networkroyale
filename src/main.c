@@ -1,137 +1,114 @@
+#include "../include/args.h"
+#include "../include/game.h"
+#include "../include/render.h"
+#include "../include/setup.h"
+#include <arpa/inet.h>
+#include <ncurses.h>
+#include <netinet/in.h>
+#include <stdint.h>
 #include <stdio.h>
-#include "../include/controller.h"
+#include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <poll.h>
-#include <errno.h>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_gamecontroller.h>
 
-void read_controller_input(SDL_GameController *con, int fd);
-int check_controller(void);
+uint16_t handle_response(int sockfd, in_port_t *port);
+void     receive_initial_board(int sockfd, player_t players[MAX_PLAYERS]);
 
-int main() {
-    int conflag;
+int main(int argc, char *argv[])
+{
+    int                serverfd;
+    int                udpfd;
+    int                retval             = EXIT_FAILURE;
+    char              *server_address_str = NULL;
+    char              *server_port_str    = NULL;
+    char               address_str[INET_ADDRSTRLEN];
+    uint8_t            player_info[INFO_LEN];
+    in_addr_t          address;
+    in_port_t          server_port;
+    in_port_t          udp_port;
+    in_port_t          server_udp_port;
+    uint16_t           player_id;
+    struct sockaddr_in server_addr;
+    struct sockaddr_in udp_addr;
+    socklen_t          addr_len = sizeof(struct sockaddr);
+    player_t           players[MAX_PLAYERS];
+    WINDOW            *windows[N_WINDOWS];
 
-    int fd_write_kb;
-    int fd_write_con;
+    parse_args(argc, argv, &server_address_str, &server_port_str);
+    handle_args(argv[0], server_address_str, server_port_str, &server_port);
 
-    int fd_read_kb;
-    int fd_read_con;
+    findaddress(&address, address_str);
+    udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM, 0);
 
-    printf("Starting main program...\n");
+    join_game(player_info, udp_port);
 
-    
-    // Create 2 FIFOs
-    fifo_fd_write_setup(&fd_write_kb, "kbfifo");
-    fifo_fd_write_setup(&fd_write_con, "confifo");
+    setup_and_connect(&serverfd, &server_addr, server_address_str, server_port, addr_len);
 
-    // init sdl subsys
-    if(SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) != 0)
+    write(serverfd, player_info, INFO_LEN);
+
+    player_id = handle_response(serverfd, &server_udp_port);
+
+    receive_initial_board(serverfd, players);
+
+    socket_close(serverfd);
+
+    //------------------------------GAME STARTS HERE-----------------------------------------------
+    //------------------------------INITIAL RENDER-----------------------------------------------
+    r_setup(windows);
+    r_init(players, windows, player_id);
+    getch();
+    //------------------------------GAME LOOP-----------------------------------------------
+
+    for(int i = 0; i < N_WINDOWS; i++)
     {
-        printf("INIT ERR\n");
-        return EXIT_FAILURE;
+        delwin(windows[i]);
     }
-
-    // check the controller
-    conflag = check_controller();
-
-    // fork the keyboard process
-    if (fork() == 0) {
-        read_keyboard_input(fd_write_kb);
-        close(fd_write_kb);
-        return EXIT_FAILURE;
-    }
-
-    // fork the controller process if a controller was found
-    if (conflag == 1 && fork() == 0)
-    {
-        SDL_GameController *con = SDL_GameControllerOpen(0);
-        read_controller_input(con, fd_write_con);
-        close(fd_write_con);
-        return EXIT_FAILURE;
-    }
-
-    // Open keyboard and controller fifos
-    fifo_fd_read_setup(&fd_read_kb, "kbfifo");
-    fifo_fd_read_setup(&fd_read_con, "confifo");
-
-    
-
-    poll_and_process_input(fd_read_kb, fd_read_con);
-
-    close(fd_read_con);
-    close(fd_read_kb);
-    unlink("confifo");
-    unlink("kbfifo");
-
-    return EXIT_FAILURE;
+    endwin();
+    //-----------------------------------------------------------------------------
+    retval = EXIT_SUCCESS;
+    socket_close(udpfd);
+    return retval;
 }
 
-void read_controller_input(SDL_GameController *con, int fd)
+uint16_t handle_response(int sockfd, in_port_t *port)
 {
-    char      buf;
-    int input;
-    SDL_Event event;
-
-    while(1)
-    {
-        while(SDL_PollEvent(&event))
-        {
-            if(event.type == SDL_QUIT)
-            {
-                SDL_GameControllerClose(con);
-                SDL_Quit();
-            }
-
-            if(event.type == SDL_CONTROLLERBUTTONDOWN)
-            {
-                input = event.cbutton.button;
-                
-                switch(input)
-                {
-                    case 0:
-                        buf = ISKILL;
-                        write(fd, &buf, 1);
-                        break;
-                    case 11:
-                        buf = IUP;
-                        write(fd, &buf, 1);
-                        break;
-                    case 12:
-                        buf = IDOWN;
-                        write(fd, &buf, 1);
-                        break;
-                    case 13:
-                        buf = ILEFT;
-                        write(fd, &buf, 1);
-                        break;
-                    case 14:
-                        buf = IRIGHT;
-                        write(fd, &buf, 1);
-                        break;
-                    default:
-                        break;
-
-                }
-            }
-        }
-    }
+    uint8_t  response[sizeof(in_port_t) * 2];
+    uint16_t player_id;
+    read(sockfd, response, sizeof(in_port_t) * 2);
+    memcpy(port, response, sizeof(in_port_t));
+    memcpy(&player_id, &response[sizeof(in_port_t)], sizeof(uint16_t));
+    return player_id;
 }
 
-int check_controller(void)
+void receive_initial_board(int sockfd, player_t players[MAX_PLAYERS])
 {
-    int con_count;
+    uint8_t buf[INIT_BOARD_BUF_LEN];
+    int     dest = 0;
 
-    con_count = SDL_NumJoysticks();
+    memset(players, 0, sizeof(player_t) * MAX_PLAYERS);
 
-    if(con_count < 1)
+    read(sockfd, buf, INIT_BOARD_BUF_LEN);
+
+    for(int i = 0; i < MAX_PLAYERS; i++)
     {
-        printf("No controller detected\n");
-        return 0;
+        player_t *p = &(players[i]);
+        uint32_t  net_class;
+        uint16_t  net_x;
+        uint16_t  net_y;
+        p->id       = i;
+        p->is_alive = 1;
+        memcpy(&net_class, &buf[dest], sizeof(uint32_t));
+        dest += (int)(sizeof(uint32_t));
+        memcpy(&net_x, &buf[dest], sizeof(uint16_t));
+        dest += (int)(sizeof(uint16_t));
+        memcpy(&net_y, &buf[dest], sizeof(uint16_t));
+        dest += (int)(sizeof(uint16_t));
+        p->class_type = (int)(ntohl(net_class));
+        p->pos.x      = ntohs(net_x);
+        p->pos.y      = ntohs(net_x);
+        memcpy(p->username, &buf[dest], NAME_LEN);
+        dest += NAME_LEN;
     }
-
-    printf("Controller detected, using controller input\n");
-    return 1;
 }

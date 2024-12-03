@@ -1,5 +1,5 @@
 build: clean
-	gcc main.c ../src/game.c -o outfile
+	gcc main.c ../src/input_handle.c -lncurses -lSDL2 -o outfile
 
 run: build
 	./outfile

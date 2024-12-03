@@ -3,12 +3,12 @@
 #include <fcntl.h>
 #include <ncurses.h>
 #include <poll.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #define PERMISSION 0666
-
 
 void fifo_fd_write_setup(int *fd, const char *path)
 {
@@ -70,7 +70,7 @@ _Noreturn void read_keyboard_input(int fd)
             case ' ':
                 buf = ISKILL;
                 write(fd, &buf, 1);
-                refresh();
+                refresh();    // refresh?
                 break;
             case 'w':
                 buf = IUP;
@@ -94,6 +94,52 @@ _Noreturn void read_keyboard_input(int fd)
         }
         refresh();
     }
+}
+
+int poll_input(int kbfd, int confd)
+{
+    int           result;
+    struct pollfd pfd[2];
+    pfd[0].fd     = kbfd;
+    pfd[0].events = POLLIN;
+
+    pfd[1].fd     = confd;
+    pfd[1].events = POLLIN;
+
+    while(1)
+    {
+        int ret = poll(pfd, 2, -1);
+        if(ret == -1)
+        {
+            perror("poll");
+            exit(EXIT_FAILURE);
+        }
+        if(ret > 0)
+        {
+            char buf;
+            if(pfd[0].revents & POLLIN)
+            {
+                if(read(kbfd, &buf, 1) < 1)
+                {
+                    continue;
+                }
+            }
+            if(pfd[1].revents & POLLIN)
+            {
+                if(read(confd, &buf, 1) < 1)
+                {
+                    continue;
+                }
+            }
+            result = (int)buf;
+            if(result >= ILEFT || result <= ISKILL)
+            {
+                break;
+            }
+            continue;
+        }
+    }
+    return result;
 }
 
 // Need to pass in a file descriptor to the udp, and send the correct inputs over the server

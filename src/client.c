@@ -1,4 +1,5 @@
 #include "../include/args.h"
+#include "../include/game.h"
 #include "../include/input_handle.h"
 #include "../include/setup.h"
 #include <SDL2/SDL.h>
@@ -38,7 +39,6 @@ int main(int argc, char *argv[])
     char              *server_port_str    = NULL;
     char               address_str[INET_ADDRSTRLEN];
     const char        *message;
-    char               username[NAME_LEN];
     uint8_t            player_info[INFO_LEN];
     char               game_start_message[GAME_START_LEN + 1];
     in_addr_t          address;
@@ -59,28 +59,28 @@ int main(int argc, char *argv[])
     parse_args(argc, argv, &server_address_str, &server_port_str);
     handle_args(argv[0], server_address_str, server_port_str, &server_port);
 
-    message = "Enter a username:\n";
-    write(1, message, strlen(message) + 1);
-    read(1, username, NAME_LEN);
-
     findaddress(&address, address_str);
-    udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM);
+    udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM, 0);
 
-    // serializing player info [name, address, port]
-    memset(player_info, '\0', INFO_LEN);
-    memcpy(player_info, username, NAME_LEN);
-    memcpy(&player_info[NAME_LEN], &udp_port, sizeof(in_port_t));
+    join_game(player_info, udp_port);
 
     setup_and_connect(&serverfd, &server_addr, server_address_str, server_port, addr_len);
 
     write(serverfd, player_info, INFO_LEN);
 
+    // -------------------NEED TO RECEIVE PLAYER ID---------------------------------------
     read(serverfd, &server_udp_port, sizeof(in_port_t));
 
     memset(game_start_message, '\0', GAME_START_LEN + 1);
     read(serverfd, game_start_message, GAME_START_LEN);
 
     printf("%s", game_start_message);
+
+    socket_close(serverfd);
+
+    // -------------------NEED TO INITIAL RENDER---------------------------------------
+
+    // -------------------INPUT STUFF---------------------------------------
 
     // Create 2 FIFOs
     fifo_fd_write_setup(&fd_write_kb, KB_FIFO_PATH);
@@ -102,6 +102,7 @@ int main(int argc, char *argv[])
         initscr();
         read_keyboard_input(fd_write_kb);
         close(fd_write_kb);
+        endwin();
         return 0;
     }
 
@@ -118,32 +119,24 @@ int main(int argc, char *argv[])
     fifo_fd_read_setup(&fd_read_kb, KB_FIFO_PATH);
     fifo_fd_read_setup(&fd_read_con, CON_FIFO_PATH);
 
-    poll_and_process_input(fd_read_kb, fd_read_con);
+    // poll_and_process_input(fd_read_kb, fd_read_con);
 
-    /*
-     * while(1)
-     * get_input <--
-     *
-     *
-     *
-     * send_input
-     * read_input <-- blocks until server updates
-     * render
-     */
-
-    // Start the game here
-
-    socket_close(serverfd);
+    while(1)
+    {
+        int input = poll_input(fd_read_kb, fd_read_con);
+        // send input
+        // read input
+        // render
+    }
 
     retval = EXIT_SUCCESS;
-
 
     close(fd_read_con);
     close(fd_read_kb);
     unlink(KB_FIFO_PATH);
     unlink(CON_FIFO_PATH);
     SDL_Quit();
-  
+
     socket_close(udpfd);
     return retval;
 }
@@ -167,7 +160,6 @@ int check_controller(void)
 void read_controller_input(SDL_GameController *con, int fd)
 {
     char      buf;
-    int       input;
     SDL_Event event;
 
     while(1)
@@ -182,8 +174,7 @@ void read_controller_input(SDL_GameController *con, int fd)
 
             if(event.type == SDL_CONTROLLERBUTTONDOWN)
             {
-                input = event.cbutton.button;
-
+                int input = event.cbutton.button;
                 switch(input)
                 {
                     case 0:

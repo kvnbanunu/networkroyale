@@ -1,15 +1,18 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include <netinet/in.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-#define TITLE_LEN 8
+#define INFO_LEN 14 // [PORT(2), CLASS(4), NAME(8)]
 #define NUM_CLASSES 9
+#define NUM_STARTING_CLASSES 4
 #define MAX_PLAYERS 25
 #define NAME_LEN 8
 #define PACK_LEN 508
 #define MAP_BOUNDS 255    // inclusive
+#define INIT_BOARD_BUF_LEN 400
 
 typedef struct Class_Base
 {
@@ -82,6 +85,7 @@ enum Class_ID
     ASSASSIN
 };
 
+void join_game(uint8_t player_info[INFO_LEN], in_port_t port);
 void init_positions(player_t players[], int num_players, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
 int  process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
 void serialize(uint8_t buf[], player_t players[], int player_count, event_t **event_head);

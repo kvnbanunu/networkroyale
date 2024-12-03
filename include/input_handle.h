@@ -6,6 +6,8 @@ void fifo_fd_read_setup(int *fd, const char *path);
 void read_keyboard_input(int fd);
 void poll_and_process_input(int kb_fd, int con_fd);
 
+int poll_input(int kbfd, int confd);
+
 enum input
 {
     IUP,
