@@ -15,6 +15,7 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
 #define NAME_LEN 5
 #define INFO_LEN 7
 #define GAME_START_LEN 17
@@ -61,6 +62,7 @@ int main(int argc, char *argv[])
     message = "Enter a username:\n";
     write(1, message, strlen(message) + 1);
     read(1, username, NAME_LEN);
+
     findaddress(&address, address_str);
     udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM);
 
@@ -79,7 +81,6 @@ int main(int argc, char *argv[])
     read(serverfd, game_start_message, GAME_START_LEN);
 
     printf("%s", game_start_message);
-    socket_close(serverfd);
 
     // Create 2 FIFOs
     fifo_fd_write_setup(&fd_write_kb, KB_FIFO_PATH);
@@ -119,9 +120,6 @@ int main(int argc, char *argv[])
 
     poll_and_process_input(fd_read_kb, fd_read_con);
 
-    // Start the game here
-    retval = EXIT_SUCCESS;
-
     /*
      * while(1)
      * get_input <--
@@ -132,6 +130,13 @@ int main(int argc, char *argv[])
      * read_input <-- blocks until server updates
      * render
      */
+
+    // Start the game here
+
+    socket_close(serverfd);
+
+    retval = EXIT_SUCCESS;
+
 
     close(fd_read_con);
     close(fd_read_kb);
