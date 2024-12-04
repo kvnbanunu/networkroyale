@@ -28,6 +28,7 @@ struct Client_Data
 
 void handle_response(struct Client_Data *data);
 void     receive_initial_board(int sockfd, player_t players[MAX_PLAYERS]);
+void fill_player_stats(player_t p[], int id);
 
 int main(int argc, char *argv[])
 {
@@ -37,6 +38,7 @@ int main(int argc, char *argv[])
     char              *server_port_str    = NULL;
     char               address_str[INET_ADDRSTRLEN];
     uint8_t            player_info[INFO_LEN];
+    uint8_t buf[PACK_LEN];
     player_t           players[MAX_PLAYERS];
     WINDOW            *windows[N_WINDOWS];
     socklen_t addr_len = sizeof(struct sockaddr);
@@ -57,14 +59,23 @@ int main(int argc, char *argv[])
 
     receive_initial_board(c_data.serverfd, players);
 
+    fill_player_stats(players, c_data.id);
+
     socket_close(c_data.serverfd);
 
     //------------------------------GAME STARTS HERE-----------------------------------------------
     //------------------------------INITIAL RENDER-----------------------------------------------
     r_setup(windows);
     r_init(players, windows, c_data.id);
-    getch();
+    getch(); // for testing
     //------------------------------GAME LOOP-----------------------------------------------
+
+    while(1) // replace with signal
+    {
+        // get inputs
+        // send inputs
+        r_update(players, windows, c_data.id, buf);
+    }
 
     for(int i = 0; i < N_WINDOWS; i++)
     {
@@ -119,4 +130,11 @@ void receive_initial_board(int sockfd, player_t players[MAX_PLAYERS])
         memcpy(p->username, &buf[dest], NAME_LEN);
         dest += NAME_LEN;
     }
+}
+
+void fill_player_stats(player_t p[], int id)
+{
+    class_t *class = get_class_data(p[id].class_type);
+    p[id].hp = class->hp;
+    p[id].has_skill = 1;
 }

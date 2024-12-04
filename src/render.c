@@ -1,5 +1,6 @@
 #include "../include/render.h"
 #include <ncurses.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,10 +46,12 @@ void r_setup(WINDOW *windows[N_WINDOWS])
     {
         box(windows[i], 0, 0);
     }
+    refresh();
 }
 
 static void display_stats(WINDOW **window, player_t p)
 {
+    wclear(*window);
     const class_t *c = get_class_data(p.class_type);
     char name[NAME_LEN + 1];
     int count = 1;
@@ -68,22 +71,213 @@ static void display_stats(WINDOW **window, player_t p)
     wrefresh(*window);
 }
 
-void r_init(player_t players[MAX_PLAYERS], WINDOW *windows[N_WINDOWS], int player)
+static void clear_players(player_t players[MAX_PLAYERS], WINDOW **win)
 {
-    WINDOW  *main  = windows[0];
-    WINDOW  *stats = windows[1];
-    player_t mc    = players[player];
+    for(int i = 0; i < MAX_PLAYERS; i++)
+    {
+        player_t p = players[i];
+        if(p.is_alive == 0)
+        {
+            continue;
+        }
+        mvwaddch(*win, p.pos.y + 1, p.pos.x + 1, ' ');
+    }
+}
+
+static void display_players(player_t players[MAX_PLAYERS], WINDOW **win, int player)
+{
     for(int i = 0; i < MAX_PLAYERS; i++)
     {
         player_t p      = players[i];
+        if(p.is_alive == 0)
+        {
+            mvwaddch(*win, p.pos.y + 1, p.pos.x + 1, '%' | COLOR_PAIR(DEAD));
+            continue;
+        }
         int      color  = (p.class_type != MOB) ? ENEMY_CHAR : NON_CHAR;
         chtype   sprite = sprite_list[p.class_type];
-        mvwaddch(main, p.pos.y + 1, p.pos.x + 1, sprite | COLOR_PAIR(color));
+        mvwaddch(*win, p.pos.y + 1, p.pos.x + 1, sprite | COLOR_PAIR(color));
     }
     // Set this client's sprite to the special one
-    mvwaddch(main, mc.pos.y + 1, mc.pos.x + 1, '@' | COLOR_PAIR(PLAYER_CHAR));
-    refresh();
-    wrefresh(main);
+    mvwaddch(*win, players[player].pos.y + 1, players[player].pos.x + 1, '@' | COLOR_PAIR(PLAYER_CHAR));
+    wrefresh(*win);
+}
+
+static void class_up(player_t *p, int class_type)
+{
+    const class_t *c = get_class_data(class_type);
+    p->class_type = class_type;
+    p->hp = c->hp;
+    p->has_skill = 1;
+}
+
+#define E_START 100
+#define E_SIZE 7
+
+static void process_events(WINDOW **win, player_t players[], uint16_t events[], uint16_t num_events, int playerid)
+{
+    wclear(*win);
+    int num_displayed = 1;
+    for(int i = 0; i < E_SIZE * num_events; i += E_SIZE)
+    {
+        int tracker = 1;
+        player_t *actor = &players[events[i] - 1];
+        player_t *target = &players[events[i + tracker++] - 1];
+        if(events[tracker++] != 0) // dmg
+        {
+            uint16_t dmg = events[tracker - 1];
+            mvwprintw(*win, num_displayed++, 1, "%s hit %s for %u", actor->username, target->username, dmg);
+            actor->active_skill = 0;
+            if(target->id == playerid)
+            {
+                target->id = (target->id - dmg < 0) ? 0 : target->id - dmg;
+            }
+        }
+        if(events[tracker++] != 0) // dodge
+        {
+            mvwprintw(*win, num_displayed++, 1, "%s dodged %s's attack!", actor->username, target->username);
+        }
+        if(events[tracker++] != 0) // death
+        {
+            mvwprintw(*win, num_displayed++, 1, "%s has been slain", actor->username);
+            actor->is_alive = 0;
+        }
+        if(events[tracker++] != 0) // skill activate
+        {
+            const class_t *c = get_class_data(actor->class_type);
+            switch(actor->class_type)
+            {
+                case CLERIC:
+                    mvwprintw(*win, num_displayed++, 1, "%s has healed to full health!", actor->username);
+                    break;
+                case FIGHTER:
+                    mvwprintw(*win, num_displayed++, 1, "%s is preparing for a double attack", actor->username);
+                    break;
+                case MAGE:
+                    mvwprintw(*win, num_displayed++, 1, "%s has teleported!", actor->username);
+                    break;
+                case ROGUE:
+                    mvwprintw(*win, num_displayed++, 1, "%s has disappeared??", actor->username);
+                    break;
+                case PALADIN:
+                    mvwprintw(*win, num_displayed++, 1, "%s has healed to full health!", actor->username);
+                    break;
+                case KNIGHT:
+                    mvwprintw(*win, num_displayed++, 1, "%s is readying his blade for a decisive strike", actor->username);
+                    break;
+                case WIZARD:
+                    mvwprintw(*win, num_displayed++, 1, "%s has teleported!", actor->username);
+                    break;
+                case ASSASSIN:
+                    mvwprintw(*win, num_displayed++, 1, "%s has gone invisible??", actor->username);
+                    break;
+                default:
+                    break;
+            }
+            actor->active_skill = c->skill_duration;
+            actor->has_skill = 0;
+        }
+        if(events[tracker++] != 0) // job advance
+        {
+            switch(actor->class_type)
+            {
+                case CLERIC:
+                    mvwprintw(*win, num_displayed++, 1, "%s has advanced from a Cleric to a Paladin!", actor->username);
+                    class_up(actor, PALADIN);
+                    break;
+                case FIGHTER:
+                    mvwprintw(*win, num_displayed++, 1, "%s has advanced from a Fighter to Knight!", actor->username);
+                    class_up(actor, KNIGHT);
+                    break;
+                case MAGE:
+                    mvwprintw(*win, num_displayed++, 1, "%s has advanced from a Mage to a Wizard!", actor->username);
+                    class_up(actor, WIZARD);
+                    break;
+                case ROGUE:
+                    mvwprintw(*win, num_displayed++, 1, "%s has advanced from a Rogue to an Assassin!", actor->username);
+                    class_up(actor, ASSASSIN);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    wrefresh(*win);
+}
+
+static int unpack_events(uint16_t events[MAX_EVENT_BUF], uint8_t buf[PACK_LEN])
+{
+    int result = 0;
+    int tracker = 0;
+    int events_added = 0;
+    for(int i = E_START; i < PACK_LEN; i += 2)
+    {
+        uint16_t net_e;
+        uint16_t home_e;
+        memcpy(&net_e, buf + i, sizeof(uint16_t));
+        home_e = ntohs(net_e);
+        memcpy(events + events_added, &home_e, sizeof(uint16_t));
+        events_added++;
+        if(tracker == 0 && home_e == 0) // when tracker is 0, the actor should be extracted which won't be zero this signals the end
+        {
+            break;
+        }
+        tracker++;
+        if(tracker == E_SIZE)
+        {
+            result++;
+            tracker = 0;
+        }
+    }
+    return result;
+}
+
+static void unpack_positions(player_t players[MAX_PLAYERS], uint8_t buf[PACK_LEN])
+{
+    int dest = 0;
+    for(int i = 0; i < MAX_PLAYERS; i++)
+    {
+        player_t *p = &players[i];
+        uint16_t x;
+        uint16_t y;
+        memcpy(&x, buf + (i*dest), sizeof(uint16_t));
+        memcpy(&y, buf + (i*dest) + sizeof(uint16_t), sizeof(uint16_t));
+        p->pos.x = ntohs(x);
+        p->pos.y = ntohs(y);
+    }
+}
+
+void r_init(player_t players[MAX_PLAYERS], WINDOW *windows[N_WINDOWS], int player)
+{
+    display_players(players, &windows[0], player);
+    display_stats(&windows[1], players[player]);
     wrefresh(windows[2]);
-    display_stats(&stats, mc);
+}
+
+static void reduce_skill_duration(player_t players[MAX_PLAYERS])
+{
+    for(int i = 0; i < MAX_PLAYERS; i++)
+    {
+        player_t *p = &players[i];
+        if(p->active_skill == 0)
+        {
+            continue;
+        }
+        p->active_skill--;
+    }
+}
+
+void r_update(player_t players[MAX_PLAYERS], WINDOW *windows[N_WINDOWS], int player, uint8_t buf[PACK_LEN])
+{
+    memset(buf, 0, PACK_LEN);
+    int num_events;
+    uint16_t events[MAX_EVENT_BUF];
+    memset(events, 0, MAX_EVENT_BUF);
+    unpack_positions(players, buf);
+    num_events = unpack_events(events, buf);
+    clear_players(players, &windows[0]);
+    process_events(&windows[2], players, events, num_events, player);
+    reduce_skill_duration(players);
+    display_players(players, &windows[0], player);
+    display_stats(&windows[1], players[player]);
 }

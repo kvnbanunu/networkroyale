@@ -401,10 +401,10 @@ int process_inputs(event_t **event_head, player_t players[], input_t inputs[], i
 static int serialize_event(uint8_t buf[], event_t **event, int dest)
 {
     const event_t *e    = *event;
-    int            flag = htons(e->actor);
+    int            flag = htons(e->actor + 1); // need to offset for easy checking
     memcpy(&buf[dest], &flag, 2);
     dest += 2;
-    flag = htons(e->target);
+    flag = htons(e->target + 1);
     memcpy(&buf[dest], &flag, 2);
     dest += 2;
     flag = htons(e->dmg);
