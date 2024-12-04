@@ -8,7 +8,7 @@
 
 typedef enum Player_Color
 {
-    PLAYER_CHAR,
+    PLAYER_CHAR = 1,
     ENEMY_CHAR,
     NON_CHAR,
     DEAD

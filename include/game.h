@@ -11,7 +11,8 @@
 #define MAX_PLAYERS 25
 #define NAME_LEN 8
 #define PACK_LEN 508
-#define MAP_BOUNDS 255    // inclusive
+#define MAP_W 64
+#define MAP_L 32
 #define INIT_BOARD_BUF_LEN 400
 #define SKILL_DESC_LEN 13
 
@@ -87,9 +88,9 @@ enum Class_ID
     ASSASSIN
 };
 
-void join_game(uint8_t player_info[INFO_LEN], in_port_t port);
-void init_positions(player_t players[], int num_players, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
-int  process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1]);
+void join_game(uint8_t player_info[INFO_LEN], in_port_t *port);
+void init_positions(player_t players[], int num_players, int game_map[MAP_W][MAP_L]);
+int  process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_W][MAP_L]);
 void serialize(uint8_t buf[], player_t players[], int player_count, event_t **event_head);
 const class_t *get_class_data(int class_type);
 

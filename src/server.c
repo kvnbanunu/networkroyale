@@ -53,7 +53,7 @@ int main(void)
     int                udpfd;
     int                retval        = EXIT_FAILURE;
     int                alive_players = MAX_PLAYERS;
-    int                game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1];    // This will hold player ids offset by 1
+    int                game_map[MAP_W][MAP_L];    // This will hold player ids offset by 1
     char               address_str[INET_ADDRSTRLEN];
     uint8_t            outbound_buf[PACK_LEN];
     uint32_t           seed;
@@ -62,7 +62,7 @@ int main(void)
     in_addr_t          address;
     in_port_t          tcp_port;
     socklen_t          addr_len = sizeof(struct sockaddr);
-    thread_data_t      thread_data;
+    thread_data_t      thread_data = {0};
     pthread_t          thread;
     input_t            inputs[MAX_PLAYERS];
     pid_t              pid;
@@ -76,7 +76,7 @@ int main(void)
     // Get the first IPv4 address of this system that matches 192.168.*.*
     findaddress(&address, address_str);
 
-    memset(&thread_data, 0, sizeof(thread_data));
+//    memset(&thread_data, 0, sizeof(thread_data));
     thread_data.player_count = -1;
 
     tcp_port             = setup_and_bind(&(thread_data.serverfd), &tcp_addr, address, addr_len, SOCK_STREAM, 0);
@@ -209,8 +209,8 @@ static void *handle_new_player(void *arg)
     in_port_t          player_port;
     char               client_host[NI_MAXHOST];
     player_t          *player = &(info->players[count]);
-    uint8_t            response[sizeof(in_port_t) * 2];    // will hold port and playerid (as short)
-    uint16_t           net_count;
+    uint8_t            response[sizeof(in_port_t) + sizeof(uint32_t)];    // will hold port and playerid
+    uint32_t           net_count;
     uint32_t           net_class;
     const class_t     *class_data = NULL;
 
@@ -231,10 +231,9 @@ static void *handle_new_player(void *arg)
     read(playerfd, buf, INFO_LEN);
 
     // Deserialize info from new client
-    memcpy(&net_class, buf, sizeof(uint32_t));
+    memcpy(&player_port, buf, sizeof(in_port_t));    // Keep port in network order
+    memcpy(&net_class, buf + sizeof(in_port_t), sizeof(uint32_t));
     player->class_type = (int)(ntohl(net_class));
-    memcpy(&player_port, &buf[(int)sizeof(uint32_t)], sizeof(in_port_t));    // Keep port in network order
-    memset(player->username, '\0', NAME_LEN);
     memcpy(player->username, &buf[INFO_LEN - NAME_LEN], NAME_LEN);
 
     player->id       = (uint8_t)count;
@@ -255,11 +254,11 @@ static void *handle_new_player(void *arg)
     info->nfds++;
 
     // send udp port & player id
-    net_count = htons((uint16_t)count);
-    memset(response, '\0', sizeof(in_port_t) * 2);
-    memcpy(response, &(info->udp_port), sizeof(in_port_t));
-    memcpy(&response[sizeof(in_port_t)], &net_count, sizeof(uint16_t));
-    write(playerfd, &response, sizeof(in_port_t) * 2);
+    net_count = htonl((uint32_t)count);
+    memset(response, '\0', sizeof(response));
+    memcpy(response, &info->udp_port, sizeof(in_port_t));
+    memcpy(response + sizeof(in_port_t), &net_count, sizeof(uint32_t));
+    write(playerfd, response, sizeof(in_port_t) + sizeof(uint32_t));
 
     printf("Player %s joined the lobby from %s:%d\n", info->players[count].username, client_host, ntohs(info->clients[count].addr.sin_port));
     return NULL;
@@ -269,7 +268,7 @@ static void *handle_new_player(void *arg)
 static void init_mobs(thread_data_t *data)
 {
     const class_t *mob_class = get_class_data(MOB);
-    const char    *name      = "a Virus";
+    const char    *name      = "a Virus!";
     for(int i = data->player_count + 1; i < MAX_PLAYERS; i++)
     {
         player_t *mob   = &(data->players[i]);
@@ -277,8 +276,7 @@ static void init_mobs(thread_data_t *data)
         mob->is_alive   = 1;
         mob->class_type = MOB;
         mob->hp         = mob_class->hp;
-        memset(mob->username, '\0', NAME_LEN);
-        memcpy(mob->username, name, strlen(name));
+        memcpy(mob->username, name, NAME_LEN);
     }
 }
 

@@ -35,60 +35,41 @@ static void clear_stream(int stream)
     close(copy);
 }
 
-void join_game(uint8_t player_info[INFO_LEN], in_port_t port)
+/* Converts name to only alphanumeric characters or a space */
+static void check_name(char name[NAME_LEN])
+{
+    for (int i = 0; i < NAME_LEN; i++)
+    {
+        if(
+            (name[i] >= 'a' && name[i] <= 'z') ||
+            (name[i] >= 'A' && name[i] <= 'Z') ||
+            (name[i] >= '0' && name[i] <= '9')
+        )
+        {
+            continue;
+        }
+        name[i] = ' ';
+    }
+}
+
+void join_game(uint8_t player_info[INFO_LEN], in_port_t *port)
 {
     class_t     C        = class_list[CLERIC];
     class_t     F        = class_list[FIGHTER];
     class_t     M        = class_list[MAGE];
     class_t     R        = class_list[ROGUE];
     const char *name_msg = "Enter a username(max 8):\n";
-    char        hello[INFO_LEN + 2];
-    //    char        class_select[MAX_BUF + 1];
     char     name[NAME_LEN];
-    char     class_in;
+    char     class_in = 0;
     int      class_home = 0;
-    uint32_t class_net;
+    uint32_t class_net = 0;
 
     memset(name, '\0', NAME_LEN);
     write(STDOUT_FILENO, name_msg, strlen(name_msg));
     read(STDIN_FILENO, &name, NAME_LEN);
+    check_name(name);
     clear_stream(STDIN_FILENO);
-    snprintf(hello, INFO_LEN + 2, "Hello %s\n", name);
-    write(STDOUT_FILENO, hello, INFO_LEN + 1);
-    //    snprintf(
-    //        class_select,
-    //        MAX_BUF + 1,
-    //        "Select a starting
-    //        class:\n\nClass:\t(1)Cleric\t(2)Fighter\t(3)Mage\t\t(4)Rogue\nHP:\t%d\t\t%d\t\t%d\t\t%d\nATK:\tD%d+%d\t\tD%d+%d\t\tD%d+%d\t\tD%d+%d\nDEF:\t%d\t\t%d\t\t%d\t\t%d\nEVA:\t%d\t\t%d\t\t%d\t\t%d\nCRIT:\t%d\t\t%d\t\t%d\t\t%d\nSkill:\t%s\t%s\t%s\t%s\n",
-    //        C.hp,
-    //        F.hp,
-    //        M.hp,
-    //        R.hp,
-    //        C.atk,
-    //        C.dmg_mod,
-    //        F.atk,
-    //        F.dmg_mod,
-    //        M.atk,
-    //        M.dmg_mod,
-    //        R.atk,
-    //        R.dmg_mod,
-    //        C.def,
-    //        F.def,
-    //        M.def,
-    //        R.def,
-    //        C.eva,
-    //        F.eva,
-    //        M.eva,
-    //        R.eva,
-    //        C.crit_rate,
-    //        F.crit_rate,
-    //        M.crit_rate,
-    //        R.crit_rate,
-    //        skill_list[CLERIC],
-    //        skill_list[FIGHTER],
-    //        skill_list[MAGE],
-    //        skill_list[ROGUE]);
-    //    write(STDOUT_FILENO, class_select, MAX_BUF);
+    printf("Hello %s\n", name);
     printf(
         "Select a starting class:\n\nClass:\t(1)Cleric\t(2)Fighter\t(3)Mage\t\t(4)Rogue\nHP:\t%d\t\t%d\t\t%d\t\t%d\nATK:\tD%d+%d\t\tD%d+%d\t\tD%d+%d\t\tD%d+%d\nDEF:\t%d\t\t%d\t\t%d\t\t%d\nEVA:\t%d\t\t%d\t\t%d\t\t%d\nCRIT:\t%d\t\t%d\t\t%d\t\t%d\nSkill:\t%s\t%s\t%s\t%s\n",
         C.hp,
@@ -132,7 +113,7 @@ void join_game(uint8_t player_info[INFO_LEN], in_port_t port)
         class_home = (class_in - '0');
     }
     // Serialize player_info[]
-    memcpy(player_info, &port, sizeof(in_port_t));
+    memcpy(player_info, port, sizeof(in_port_t)); // this port always stays in network byte order
     class_net = htonl((uint32_t)class_home);
     memcpy(&player_info[(int)(sizeof(in_port_t))], &class_net, sizeof(uint32_t));
     memcpy(&player_info[INFO_LEN - NAME_LEN], name, NAME_LEN);
@@ -255,13 +236,13 @@ static int check_inbounds(coord_t coord, int input)
             inbound = (coord.y - 1 >= 0);
             break;
         case INPUT_DOWN:
-            inbound = (coord.y + 1 <= MAP_BOUNDS);
+            inbound = (coord.y + 1 < MAP_L);
             break;
         case INPUT_LEFT:
             inbound = (coord.x - 1 >= 0);
             break;
         case INPUT_RIGHT:
-            inbound = (coord.x + 1 <= MAP_BOUNDS);
+            inbound = (coord.x + 1 < MAP_W);
             break;
         default:
             break;
@@ -271,7 +252,7 @@ static int check_inbounds(coord_t coord, int input)
 }
 
 // If the (coord + input) on the map has a player on it, return the id(+1) or 0
-static int check_collision(coord_t coord, int input, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+static int check_collision(coord_t coord, int input, int game_map[MAP_W][MAP_L])
 {
     int collision;
     int x = (int)coord.x;
@@ -298,18 +279,19 @@ static int check_collision(coord_t coord, int input, int game_map[MAP_BOUNDS + 1
     return collision;
 }
 
-void init_positions(player_t players[], int num_players, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+void init_positions(player_t players[], int num_players, int game_map[MAP_W][MAP_L])
 {
+    memset(game_map, 0, MAP_W * MAP_L * sizeof(int));
     for(int i = 0; i < num_players; i++)
     {
-        int x = rand() % MAP_BOUNDS;
-        int y = rand() % MAP_BOUNDS;
+        int x = rand() % (MAP_W - 1);
+        int y = rand() % (MAP_L - 1);
 
         // Generate new coord until position is available
-        while(game_map[x][y])
+        while(game_map[x][y] != 0)
         {
-            x = rand() % MAP_BOUNDS;
-            y = rand() % MAP_BOUNDS;
+            x = rand() % (MAP_W - 1);
+            y = rand() % (MAP_L - 1);
         }
         game_map[x][y]   = players[i].id + 1;
         players[i].pos.x = (uint16_t)x;
@@ -317,7 +299,7 @@ void init_positions(player_t players[], int num_players, int game_map[MAP_BOUNDS
     }
 }
 
-static void move_player(player_t *player, int input, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+static void move_player(player_t *player, int input, int game_map[MAP_W][MAP_L])
 {
     if(input == INPUT_SKILL)
     {
@@ -349,22 +331,22 @@ static void move_player(player_t *player, int input, int game_map[MAP_BOUNDS + 1
     game_map[player->pos.x][player->pos.y] = player->id + 1;
 }
 
-static void teleport(player_t *player, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+static void teleport(player_t *player, int game_map[MAP_W][MAP_L])
 {
-    int x                                  = rand() % MAP_BOUNDS;
-    int y                                  = rand() % MAP_BOUNDS;
+    int x                                  = rand() % (MAP_W - 1);
+    int y                                  = rand() % (MAP_L - 1);
     game_map[player->pos.x][player->pos.y] = 0;
-    while(game_map[x][y])
+    while(game_map[x][y] != 0)
     {
-        x = rand() % MAP_BOUNDS;
-        y = rand() % MAP_BOUNDS;
+        x = rand() % (MAP_W - 1);
+        y = rand() % (MAP_L - 1);
     }
     player->pos.x  = (uint16_t)x;
     player->pos.y  = (uint16_t)y;
     game_map[x][y] = player->id + 1;
 }
 
-static void activate_skill(event_t **event_head, player_t *player, int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+static void activate_skill(event_t **event_head, player_t *player, int game_map[MAP_W][MAP_L])
 {
     if(!(player->has_skill) || player->active_skill)
     {
@@ -384,7 +366,7 @@ static void activate_skill(event_t **event_head, player_t *player, int game_map[
     add_event(event_head, (uint16_t)(player->id), 0, 0, 0, 0, 1, 0);
 }
 
-int process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_BOUNDS + 1][MAP_BOUNDS + 1])
+int process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_W][MAP_L])
 {
     int slain = 0;
     for(int i = 0; i < MAX_PLAYERS; i++)

@@ -2,6 +2,10 @@
 #include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#define STAT_W 24
+#define STAT_L 12
 
 // aligns with class_list
 static const chtype sprite_list[] = {'v', 'C', 'F', 'M', 'R', 'P', 'K', 'W', 'A'};
@@ -10,7 +14,6 @@ static const chtype sprite_list[] = {'v', 'C', 'F', 'M', 'R', 'P', 'K', 'W', 'A'
 
 void r_setup(WINDOW *windows[N_WINDOWS])
 {
-    int m = MAP_BOUNDS + 1;
     clear();
     initscr();
     curs_set(0);
@@ -33,9 +36,9 @@ void r_setup(WINDOW *windows[N_WINDOWS])
     init_pair(DEAD, COLOR_RED, COLOR_BLACK);
     // Add more colours
 
-    windows[0] = newwin(m + 2, m + 2, 1, 1);
-    windows[1] = newwin(m + 2, m + 2, 1, 2 + m + 2);
-    windows[2] = newwin(m + 2, (m + 2) * 2 + 2, 2 + m + 2, 1);
+    windows[0] = newwin(MAP_L + 2, MAP_W + 2, 1, 1);
+    windows[1] = newwin(STAT_L + 2, STAT_W + 2, MAP_L/2, MAP_W + 2 + STAT_W/2);
+    windows[2] = newwin(MAP_L, MAP_W + 2 + STAT_W, 2 + MAP_L + 2, 1);
 
     box(stdscr, 0, 0);
     for(int i = 0; i < N_WINDOWS; i++)
@@ -47,7 +50,22 @@ void r_setup(WINDOW *windows[N_WINDOWS])
 static void display_stats(WINDOW **window, player_t p)
 {
     const class_t *c = get_class_data(p.class_type);
-    mvwprintw(*window, 1, 1, "%s\nHP:\t%d\nEXP:\t%d\nATK:\tD%d+%d\nDEF:\t%d\nEVA:\t%d\nCRIT:\t%d\nSKILL USES:\t%d\nSKILL DESCRIPTION:\n%s", p.username, p.hp, p.exp, c->atk, c->dmg_mod, c->def, c->eva, c->crit_rate, p.has_skill, c->skill_description);
+    char name[NAME_LEN + 1];
+    int count = 1;
+    memset(name, '\0', NAME_LEN + 1);
+    memcpy(name, p.username, NAME_LEN);
+    mvwprintw(*window, count++, 1, "%s", name);
+    mvwprintw(*window, count++, 1, "HP:\t%d", p.hp);
+    mvwprintw(*window, count++, 1, "EXP:\t%d", p.exp);
+    mvwprintw(*window, count++, 1, "ATK:\tD%d+%d", c->atk, c->dmg_mod);
+    mvwprintw(*window, count++, 1, "DEF:\t%d", c->def);
+    mvwprintw(*window, count++, 1, "EVA:\t%d", c->eva);
+    mvwprintw(*window, count++, 1, "CRIT:\t%d", c->crit_rate);
+    mvwprintw(*window, count++, 1, "SKILL USES:\t%d", p.has_skill);
+    mvwprintw(*window, count++, 1, "SKILL DESCRIPTION:");
+    mvwprintw(*window, count++, 1, "%s", c->skill_description);
+
+    wrefresh(*window);
 }
 
 void r_init(player_t players[MAX_PLAYERS], WINDOW *windows[N_WINDOWS], int player)
@@ -60,17 +78,12 @@ void r_init(player_t players[MAX_PLAYERS], WINDOW *windows[N_WINDOWS], int playe
         player_t p      = players[i];
         int      color  = (p.class_type != MOB) ? ENEMY_CHAR : NON_CHAR;
         chtype   sprite = sprite_list[p.class_type];
-        attron(COLOR_PAIR(color));
-        mvwaddch(main, p.pos.y + 1, p.pos.x + 1, sprite);
-        attroff(COLOR_PAIR(color));
+        mvwaddch(main, p.pos.y + 1, p.pos.x + 1, sprite | COLOR_PAIR(color));
     }
-
     // Set this client's sprite to the special one
-    mvwaddch(main, mc.pos.y, mc.pos.x, '@' | COLOR_PAIR(PLAYER_CHAR));
-    display_stats(&stats, mc);
+    mvwaddch(main, mc.pos.y + 1, mc.pos.x + 1, '@' | COLOR_PAIR(PLAYER_CHAR));
     refresh();
-    for(int i = 0; i < N_WINDOWS; i++)
-    {
-        wrefresh(windows[i]);
-    }
+    wrefresh(main);
+    wrefresh(windows[2]);
+    display_stats(&stats, mc);
 }

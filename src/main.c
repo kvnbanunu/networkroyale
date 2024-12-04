@@ -13,51 +13,56 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-uint16_t handle_response(int sockfd, in_port_t *port);
+struct Client_Data
+{
+    int id;
+    int fd;
+    int serverfd;
+    in_addr_t address;
+    in_port_t port;
+    in_port_t server_tcp_port;
+    in_port_t server_udp_port;
+    struct sockaddr_in addr;
+    struct sockaddr_in server_addr;
+};
+
+void handle_response(struct Client_Data *data);
 void     receive_initial_board(int sockfd, player_t players[MAX_PLAYERS]);
 
 int main(int argc, char *argv[])
 {
-    int                serverfd;
-    int                udpfd;
+    struct Client_Data c_data = {0};
     int                retval             = EXIT_FAILURE;
     char              *server_address_str = NULL;
     char              *server_port_str    = NULL;
     char               address_str[INET_ADDRSTRLEN];
     uint8_t            player_info[INFO_LEN];
-    in_addr_t          address;
-    in_port_t          server_port;
-    in_port_t          udp_port;
-    in_port_t          server_udp_port;
-    uint16_t           player_id;
-    struct sockaddr_in server_addr;
-    struct sockaddr_in udp_addr;
-    socklen_t          addr_len = sizeof(struct sockaddr);
     player_t           players[MAX_PLAYERS];
     WINDOW            *windows[N_WINDOWS];
+    socklen_t addr_len = sizeof(struct sockaddr);
 
     parse_args(argc, argv, &server_address_str, &server_port_str);
-    handle_args(argv[0], server_address_str, server_port_str, &server_port);
+    handle_args(argv[0], server_address_str, server_port_str, &(c_data.server_tcp_port));
 
-    findaddress(&address, address_str);
-    udp_port = setup_and_bind(&udpfd, &udp_addr, address, addr_len, SOCK_DGRAM, 0);
+    findaddress(&(c_data.address), address_str);
+    c_data.port = setup_and_bind(&(c_data.fd), &(c_data.addr), c_data.address, addr_len, SOCK_DGRAM, 0);
 
-    join_game(player_info, udp_port);
+    join_game(player_info, &(c_data.port));
 
-    setup_and_connect(&serverfd, &server_addr, server_address_str, server_port, addr_len);
+    setup_and_connect(&(c_data.serverfd), &(c_data.server_addr), server_address_str, c_data.server_tcp_port, addr_len);
 
-    write(serverfd, player_info, INFO_LEN);
+    write(c_data.serverfd, player_info, INFO_LEN);
 
-    player_id = handle_response(serverfd, &server_udp_port);
+    handle_response(&c_data);
 
-    receive_initial_board(serverfd, players);
+    receive_initial_board(c_data.serverfd, players);
 
-    socket_close(serverfd);
+    socket_close(c_data.serverfd);
 
     //------------------------------GAME STARTS HERE-----------------------------------------------
     //------------------------------INITIAL RENDER-----------------------------------------------
     r_setup(windows);
-    r_init(players, windows, player_id);
+    r_init(players, windows, c_data.id);
     getch();
     //------------------------------GAME LOOP-----------------------------------------------
 
@@ -65,21 +70,24 @@ int main(int argc, char *argv[])
     {
         delwin(windows[i]);
     }
+    curs_set(1);
     endwin();
     //-----------------------------------------------------------------------------
     retval = EXIT_SUCCESS;
-    socket_close(udpfd);
+    socket_close(c_data.fd);
     return retval;
 }
 
-uint16_t handle_response(int sockfd, in_port_t *port)
+void handle_response(struct Client_Data *data)
 {
-    uint8_t  response[sizeof(in_port_t) * 2];
-    uint16_t player_id;
-    read(sockfd, response, sizeof(in_port_t) * 2);
-    memcpy(port, response, sizeof(in_port_t));
-    memcpy(&player_id, &response[sizeof(in_port_t)], sizeof(uint16_t));
-    return player_id;
+    uint8_t  response[sizeof(in_port_t) + sizeof(uint32_t)];
+    uint32_t playerid;
+    read(data->serverfd, response, sizeof(response));
+    memcpy(&(data->server_udp_port), response, sizeof(in_port_t));
+    memcpy(&playerid, response + sizeof(in_port_t), sizeof(uint32_t));
+    data->id = (int)(ntohl(playerid));
+
+    printf("player id: %u\n", data->id);
 }
 
 void receive_initial_board(int sockfd, player_t players[MAX_PLAYERS])
@@ -107,7 +115,7 @@ void receive_initial_board(int sockfd, player_t players[MAX_PLAYERS])
         dest += (int)(sizeof(uint16_t));
         p->class_type = (int)(ntohl(net_class));
         p->pos.x      = ntohs(net_x);
-        p->pos.y      = ntohs(net_x);
+        p->pos.y      = ntohs(net_y);
         memcpy(p->username, &buf[dest], NAME_LEN);
         dest += NAME_LEN;
     }
