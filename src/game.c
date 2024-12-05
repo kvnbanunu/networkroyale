@@ -5,8 +5,6 @@
 #include <SDL2/SDL_gamecontroller.h>
 #include <SDL2/SDL_joystick.h>
 #include <arpa/inet.h>
-#include <bits/pthreadtypes.h>
-#include <bits/time.h>
 #include <ncurses.h>
 #include <pthread.h>
 #include <stdio.h>

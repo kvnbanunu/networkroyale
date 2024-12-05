@@ -1,7 +1,5 @@
 #include "../include/no_con_game.h"
 #include <arpa/inet.h>
-#include <bits/pthreadtypes.h>
-#include <bits/time.h>
 #include <ncurses.h>
 #include <pthread.h>
 #include <stdio.h>

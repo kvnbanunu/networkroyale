@@ -1,8 +1,8 @@
 #include "../include/setup.h"
 #include <arpa/inet.h>
-#include <bits/getopt_core.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <ifaddrs.h>
 #include <inttypes.h>
 #include <netdb.h>
