@@ -2,10 +2,10 @@ build-all: server client
 	echo "server and client built successfully"
 
 server:
-	gcc src/server.c src/socket.c src/args.c src/usage.c -o server
+	gcc src/server.c src/setup.c src/game.c -o debug/server
 
 client:
-	gcc src/client.c src/socket.c src/args.c src/usage.c -lncurses -o client
+	gcc src/main.c src/setup.c src/args.c src/game.c src/render.c -lncurses -lSDL2 -o debug/client
 
 rs: server
 	./server
@@ -14,4 +14,4 @@ rc: client
 	./client
 
 clean:
-	rm -f server client
+	rm -f debug/server debug/client

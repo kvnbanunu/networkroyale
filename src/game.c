@@ -27,7 +27,7 @@ static const class_t class_list[] = {
 
 // static const char skill_list[NUM_CLASSES][] = {"", "Full Heal", "Double Hit", "Teleport", "Invisibility", "Full Heal", "Double Hit", "Teleport", "Invisibility"};
 
-static void clear_stream(int stream)
+void clear_stream(int stream)
 {
     int copy = fcntl(stream, F_DUPFD_CLOEXEC);
     tcdrain(copy);
@@ -38,7 +38,7 @@ static void clear_stream(int stream)
 /* Converts name to only alphanumeric characters or a space */
 static void check_name(char name[NAME_LEN])
 {
-    for (int i = 0; i < NAME_LEN; i++)
+    for (int i = 0; i < NAME_LEN - 1; i++)
     {
         if(
             (name[i] >= 'a' && name[i] <= 'z') ||
@@ -50,6 +50,7 @@ static void check_name(char name[NAME_LEN])
         }
         name[i] = ' ';
     }
+    name[NAME_LEN] = '\0';
 }
 
 void join_game(uint8_t player_info[INFO_LEN], in_port_t *port)
@@ -58,7 +59,7 @@ void join_game(uint8_t player_info[INFO_LEN], in_port_t *port)
     class_t     F        = class_list[FIGHTER];
     class_t     M        = class_list[MAGE];
     class_t     R        = class_list[ROGUE];
-    const char *name_msg = "Enter a username(max 8):\n";
+    const char *name_msg = "Enter a username(max 7):\n";
     char     name[NAME_LEN];
     char     class_in = 0;
     int      class_home = 0;
@@ -373,20 +374,21 @@ int process_inputs(event_t **event_head, player_t players[], input_t inputs[], i
     {
         const coord_t *pos;
         int            collision;
-        if(inputs[i].input == INPUT_SKILL)
+        int in = (int)(inputs[i].input);
+        if(in == INPUT_SKILL)
         {
             activate_skill(event_head, &players[i], game_map);
             continue;
         }
         pos = &players[i].pos;
-        if(!check_inbounds(*pos, (int)(inputs[i].input)))
+        if(!check_inbounds(*pos, in))
         {
             continue;    // can't move
         }
-        collision = check_collision(*pos, (int)(inputs[i].input), game_map);
-        if(!collision)
+        collision = check_collision(*pos, in, game_map);
+        if(collision == 0)
         {
-            move_player(&players[i], (int)(inputs[i].input), game_map);
+            move_player(&players[i], in, game_map);
             continue;
         }
         slain += combat(event_head, &players[i], &players[collision - 1]);
@@ -424,21 +426,21 @@ static int serialize_event(uint8_t buf[], event_t **event, int dest)
     return dest + 2;
 }
 
-void serialize(uint8_t buf[], player_t players[], int player_count, event_t **event_head)
+void serialize(uint8_t buf[], player_t players[], event_t **event_head)
 {
     event_t *curr = (*event_head)->next;
     event_t *temp;
     int      dest = 0;
-    memset(buf, '\0', PACK_LEN);
+    memset(buf, 0, PACK_LEN);
 
     // copy the coordinates
-    for(int i = 0; i < player_count; i++)
+    for(int i = 0; i < MAX_PLAYERS; i++)
     {
         uint16_t x = htons(players[i].pos.x);
         uint16_t y = htons(players[i].pos.y);
-        memcpy(&buf[dest], &x, 2);
+        memcpy(buf + dest, &x, 2);
         dest += 2;
-        memcpy(&buf[dest], &y, 2);
+        memcpy(buf + dest, &y, 2);
         dest += 2;
     }
 

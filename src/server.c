@@ -18,8 +18,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define LISTEN_TIMEOUT 5
-#define INPUT_SIZE 6
+#define LISTEN_TIMEOUT 3
 
 static volatile sig_atomic_t exit_flag = 0;    // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
@@ -170,21 +169,23 @@ game_start:
         receive_input(inputs, udpfd);
         fill_random_moves(inputs, thread_data.players, MAX_PLAYERS);
         alive_players -= process_inputs(&event_head, thread_data.players, inputs, game_map);
-        serialize(outbound_buf, thread_data.players, MAX_PLAYERS, &event_head);
-        for(int i = 0; i < thread_data.player_count; i++)
+        serialize(outbound_buf, thread_data.players, &event_head);
+        for(int i = 0; i < thread_data.player_count + 1; i++)
         {
-            pid = fork();
-            switch(pid)
-            {
-                case -1:
-                    fprintf(stderr, "Error Forking for player: %d\n", i);
-                    goto done;
-                case 0:
-                    sendto(udpfd, outbound_buf, PACK_LEN, 0, (struct sockaddr *)&(thread_data.clients[i].addr), addr_len);
-                    break;
-                default:
-                    continue;
-            }
+//            pid = fork();
+//            switch(pid)
+//            {
+//                case -1:
+//                    fprintf(stderr, "Error Forking for player: %d\n", i);
+//                    goto done;
+//                case 0:
+//                    sendto(udpfd, outbound_buf, PACK_LEN, 0, (struct sockaddr *)&(thread_data.clients[i].addr), addr_len);
+//                    retval = EXIT_SUCCESS;
+//                    goto done;
+//                default:
+//                    continue;
+//            }
+            sendto(udpfd, outbound_buf, PACK_LEN, 0, (struct sockaddr *)&(thread_data.clients[i].addr), addr_len);
         }
     }
     if(alive_players == 1)
@@ -268,7 +269,7 @@ static void *handle_new_player(void *arg)
 static void init_mobs(thread_data_t *data)
 {
     const class_t *mob_class = get_class_data(MOB);
-    const char    *name      = "a Virus!";
+    const char name[] = {'a',' ','v','i','r','u','s','\0'};
     for(int i = data->player_count + 1; i < MAX_PLAYERS; i++)
     {
         player_t *mob   = &(data->players[i]);

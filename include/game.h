@@ -11,10 +11,11 @@
 #define MAX_PLAYERS 25
 #define NAME_LEN 8
 #define PACK_LEN 508
-#define MAP_W 64
-#define MAP_L 32
+#define MAP_W 32
+#define MAP_L 16
 #define INIT_BOARD_BUF_LEN 400
 #define SKILL_DESC_LEN 13
+#define INPUT_SIZE 6
 
 typedef struct Class_Base
 {
@@ -88,10 +89,11 @@ enum Class_ID
     ASSASSIN
 };
 
+void clear_stream(int stream);
 void join_game(uint8_t player_info[INFO_LEN], in_port_t *port);
 void init_positions(player_t players[], int num_players, int game_map[MAP_W][MAP_L]);
 int  process_inputs(event_t **event_head, player_t players[], input_t inputs[], int game_map[MAP_W][MAP_L]);
-void serialize(uint8_t buf[], player_t players[], int player_count, event_t **event_head);
+void serialize(uint8_t buf[], player_t players[], event_t **event_head);
 const class_t *get_class_data(int class_type);
 
 #endif    // GAME_H

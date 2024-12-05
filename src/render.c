@@ -130,7 +130,7 @@ static void process_events(WINDOW **win, player_t players[], uint16_t events[], 
             actor->active_skill = 0;
             if(target->id == playerid)
             {
-                target->id = (target->id - dmg < 0) ? 0 : target->id - dmg;
+                target->hp = (target->hp - dmg < 0) ? 0 : target->hp - dmg;
             }
         }
         if(events[tracker++] != 0) // dodge
@@ -141,6 +141,7 @@ static void process_events(WINDOW **win, player_t players[], uint16_t events[], 
         {
             mvwprintw(*win, num_displayed++, 1, "%s has been slain", actor->username);
             actor->is_alive = 0;
+            target->exp++;
         }
         if(events[tracker++] != 0) // skill activate
         {
@@ -163,7 +164,7 @@ static void process_events(WINDOW **win, player_t players[], uint16_t events[], 
                     mvwprintw(*win, num_displayed++, 1, "%s has healed to full health!", actor->username);
                     break;
                 case KNIGHT:
-                    mvwprintw(*win, num_displayed++, 1, "%s is readying his blade for a decisive strike", actor->username);
+                    mvwprintw(*win, num_displayed++, 1, "%s is readying their blade for a decisive strike", actor->username);
                     break;
                 case WIZARD:
                     mvwprintw(*win, num_displayed++, 1, "%s has teleported!", actor->username);
@@ -216,8 +217,6 @@ static int unpack_events(uint16_t events[MAX_EVENT_BUF], uint8_t buf[PACK_LEN])
         uint16_t home_e;
         memcpy(&net_e, buf + i, sizeof(uint16_t));
         home_e = ntohs(net_e);
-        memcpy(events + events_added, &home_e, sizeof(uint16_t));
-        events_added++;
         if(tracker == 0 && home_e == 0) // when tracker is 0, the actor should be extracted which won't be zero this signals the end
         {
             break;
@@ -228,13 +227,15 @@ static int unpack_events(uint16_t events[MAX_EVENT_BUF], uint8_t buf[PACK_LEN])
             result++;
             tracker = 0;
         }
+        memcpy(events + events_added, &home_e, sizeof(uint16_t));
+        events_added++;
     }
     return result;
 }
 
 static void unpack_positions(player_t players[MAX_PLAYERS], uint8_t buf[PACK_LEN])
 {
-    int dest = 0;
+    int dest = (int)(sizeof(uint16_t) * 2);
     for(int i = 0; i < MAX_PLAYERS; i++)
     {
         player_t *p = &players[i];
@@ -244,6 +245,7 @@ static void unpack_positions(player_t players[MAX_PLAYERS], uint8_t buf[PACK_LEN
         memcpy(&y, buf + (i*dest) + sizeof(uint16_t), sizeof(uint16_t));
         p->pos.x = ntohs(x);
         p->pos.y = ntohs(y);
+        printf("p:%d (%u,%u)\n", i, p->pos.x, p->pos.y);
     }
 }
 
@@ -269,15 +271,15 @@ static void reduce_skill_duration(player_t players[MAX_PLAYERS])
 
 void r_update(player_t players[MAX_PLAYERS], WINDOW *windows[N_WINDOWS], int player, uint8_t buf[PACK_LEN])
 {
-    memset(buf, 0, PACK_LEN);
     int num_events;
     uint16_t events[MAX_EVENT_BUF];
     memset(events, 0, MAX_EVENT_BUF);
+    clear_players(players, &windows[0]);
     unpack_positions(players, buf);
     num_events = unpack_events(events, buf);
-    clear_players(players, &windows[0]);
     process_events(&windows[2], players, events, num_events, player);
     reduce_skill_duration(players);
     display_players(players, &windows[0], player);
     display_stats(&windows[1], players[player]);
+    memset(buf, 0, PACK_LEN);
 }
