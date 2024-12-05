@@ -2,6 +2,8 @@
 #include "../include/setup.h"
 #include <netinet/in.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <sys/socket.h>
 
 int main(int argc, char *argv[])
 {

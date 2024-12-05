@@ -1,7 +1,9 @@
 #include "../include/game.h"
 #include "../include/setup.h"
 #include <netinet/in.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 
 int main(int argc, char *argv[])
 {

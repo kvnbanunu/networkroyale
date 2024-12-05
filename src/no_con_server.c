@@ -1,7 +1,9 @@
 #include "../include/no_con_game.h"
 #include "../include/setup.h"
 #include <netinet/in.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 
 int main(void)
 {
