@@ -83,6 +83,9 @@ int main(int argc, char *argv[])
     socket_close(c_data.serverfd);
     c_data.server_addr.sin_port = c_data.server_udp_port;
 
+    //------------------------------INITIAL RENDER-----------------------------------------------
+    r_setup(windows);
+    r_init(players, windows, c_data.id);
     //------------------------------GAME STARTS HERE-----------------------------------------------
 
     if(mkfifo(INPUT_PATH, PERMISSION) == -1)
@@ -127,10 +130,6 @@ int main(int argc, char *argv[])
         {
             return EXIT_FAILURE;
         }
-        initscr();
-        noecho();
-        cbreak();
-        keypad(stdscr, TRUE);
         while(1)
         {
             int input = getch();
@@ -224,11 +223,6 @@ int main(int argc, char *argv[])
         }
     }
     SDL_Quit();
-
-    //------------------------------INITIAL RENDER-----------------------------------------------
-    r_setup(windows);
-    r_init(players, windows, c_data.id);
-//    getch(); // for testing
     //------------------------------GAME LOOP-----------------------------------------------
 
     while(1) // replace with signal
