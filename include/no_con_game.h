@@ -5,7 +5,6 @@
 #include <time.h>
 #include <netinet/in.h>
 #include <stdint.h>
-#include <SDL2/SDL.h>
 #include <pthread.h>
 
 #define PACK_LEN 16
@@ -53,7 +52,6 @@ typedef struct Data
     coord_t r_pos;
     time_t timer;
     pthread_mutex_t mutex;
-    SDL_GameController *con;
 } data_t;
 
 void start(data_t *data);

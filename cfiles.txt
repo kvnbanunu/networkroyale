@@ -1,3 +1,0 @@
-server src/server.c src/setup.c src/game.c pthread
-client src/client.c src/setup.c include/setup.h src/args.c include/args.h src/input_handle.c include/input_handle.h SDL2 ncurses unistd
-main src/main.c src/setup.c src/args.c src/render.c ncurses

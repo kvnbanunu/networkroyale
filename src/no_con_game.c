@@ -1,9 +1,4 @@
-#include "../include/game.h"
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_error.h>
-#include <SDL2/SDL_events.h>
-#include <SDL2/SDL_gamecontroller.h>
-#include <SDL2/SDL_joystick.h>
+#include "../include/no_con_game.h"
 #include <arpa/inet.h>
 #include <bits/pthreadtypes.h>
 #include <bits/time.h>
@@ -135,47 +130,6 @@ static void *keyboard_input(void *arg)
     return NULL;
 }
 
-static void *controller_input(void *arg)
-{
-    data_t   *data = (data_t *)arg;
-    SDL_Event event;
-    while(data->running)
-    {
-        while(SDL_PollEvent(&event))
-        {
-            if(event.type == SDL_CONTROLLERBUTTONDOWN)
-            {
-                int x = (int)(data->l_pos.x);
-                int y = (int)(data->l_pos.y);
-                switch(event.cbutton.button)
-                {
-                    case SDL_CONTROLLER_BUTTON_DPAD_UP:
-                        y--;
-                        break;
-                    case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-                        y++;
-                        break;
-                    case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-                        x--;
-                        break;
-                    case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-                        x++;
-                        break;
-                    case SDL_CONTROLLER_BUTTON_BACK:
-                        data->running = 0;
-                        break;
-                    default:
-                        break;
-                }
-                data->timer = time(NULL);
-                update_player_pos(data, x, y);
-            }
-        }
-        add_delay();
-    }
-    return NULL;
-}
-
 static void *random_movement(void *arg)
 {
     data_t *data = (data_t *)arg;
@@ -261,19 +215,6 @@ void start(data_t *data)
     cbreak();
     keypad(stdscr, TRUE);
     curs_set(0);
-
-    if(SDL_Init(SDL_INIT_GAMECONTROLLER) < 0)
-    {
-        fprintf(stderr, "SDL2 init failed: %s\n", SDL_GetError());
-    }
-    if(SDL_NumJoysticks() > 0)
-    {
-        data->con = SDL_GameControllerOpen(0);
-        if(!(data->con))
-        {
-            fprintf(stderr, "Failed to open controller: %s\n", SDL_GetError());
-        }
-    }
     if(pthread_mutex_init(&data->mutex, NULL) != 0)
     {
         fprintf(stderr, "Error: Mutext initialization failed.\n");
@@ -288,12 +229,10 @@ void start(data_t *data)
 void run(data_t *data)
 {
     pthread_t keyboard_thread;
-    pthread_t controller_thread;
     pthread_t timeout_thread;
     pthread_t receive_thread;
 
     pthread_create(&keyboard_thread, NULL, keyboard_input, (void *)data);
-    pthread_create(&controller_thread, NULL, controller_input, (void *)data);
     pthread_create(&timeout_thread, NULL, random_movement, (void *)data);
     pthread_create(&receive_thread, NULL, receive_coord, (void *)data);
 
@@ -309,18 +248,12 @@ void run(data_t *data)
     }
 
     pthread_join(keyboard_thread, NULL);
-    pthread_join(controller_thread, NULL);
     pthread_join(timeout_thread, NULL);
     pthread_join(receive_thread, NULL);
 }
 
 void cleanup(const data_t *data)
 {
-    if(data->con)
-    {
-        SDL_GameControllerClose(data->con);
-        SDL_Quit();
-    }
     close(data->fd);
     endwin();
 }

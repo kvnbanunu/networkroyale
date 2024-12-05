@@ -1,2 +1,4 @@
-server src/server.c src/setup.c src/game.c pthread
-main src/main.c src/setup.c src/args.c src/game.c src/render.c ncurses
+server src/server.c src/setup.c src/game.c ncurses pthread SDL2
+client src/client.c src/setup.c src/game.c ncurses pthread SDL2
+no_con_server src/no_con_server.c src/setup.c src/no_con_game.c ncurses pthread
+no_con_client src/no_con_client.c src/setup.c src/no_con_game.c ncurses pthread

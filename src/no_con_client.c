@@ -1,4 +1,4 @@
-#include "../include/game.h"
+#include "../include/no_con_game.h"
 #include "../include/setup.h"
 #include <netinet/in.h>
 #include <stdlib.h>
