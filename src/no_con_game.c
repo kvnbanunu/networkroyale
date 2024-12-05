@@ -45,8 +45,8 @@ static void send_coord(data_t *data)
 
 static void init_position(coord_t *coord)
 {
-    coord->x = (uint32_t)(rand() % (MAP_W - 1));
-    coord->y = (uint32_t)(rand() % (MAP_H - 1));
+    coord->x = arc4random() % (MAP_W - 1);
+    coord->y = arc4random() % (MAP_H - 1);
 }
 
 static void draw_border(void)
@@ -139,7 +139,7 @@ static void *random_movement(void *arg)
         {
             int x = (int)(data->l_pos.x);
             int y = (int)(data->l_pos.x);
-            switch(rand() % N_DIRECTIONS)
+            switch(arc4random() % N_DIRECTIONS)
             {
                 case INPUT_UP:
                     y--;
