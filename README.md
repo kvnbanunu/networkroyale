@@ -2,9 +2,32 @@
 
 This branch is the submission for Comp3980 Final project with minimal functionality.
 
+Project Requirements:
+- Peer-to-peer connection using UDP
+- Display using ncurses library
+- Player movement sent as a UDP packet
+- Synchronized movement updated on both player's display
+- Customized protocol for exchanging movement updates
+- Read keyboard input
+- Read controller input using SDL2 (Bonus)
+- Random movement after a set period of inactivity
+- Game elements (Bonus)
+
+## Contributors
+
+Kevin Nguyen (Banunu) [https://github.com/kvnbanunu]
+Evin Gonzales [https://github.com/evin-gg]
+
 ## Prerequisites
 
 This project uses a build system written by D'arcy Smith. To compile using the build system you need the template structure from [https://github.com/programming101dev/template-c]
+
+Tested Platforms:
+- Arch Linux 2024.12.01
+- Manjaro 24.2
+- Ubuntu 2024.04.1
+- MacOS 14.2 (clang only)
+- FreeBSD 14.0-RELEASE-p4
 
 Dependencies:
 - gcc or clang (Makefile specifies gcc)
