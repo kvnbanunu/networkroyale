@@ -11,7 +11,7 @@ Project Requirements:
 - Read keyboard input
 - Read controller input using SDL2 (Bonus)
 - Random movement after a set period of inactivity
-- Game elements (Bonus)
+- Game elements (Bonus) [https://github.com/kvnbanunu/networkroyale/tree/extra]
 
 ## Contributors
 
